@@ -1,0 +1,16 @@
+# Pipeline runtime (subset of root requirements.txt — only what the pipeline actually uses)
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.5.1
+torchvision==0.20.1
+opencv-python-headless==4.10.0.84
+easyocr==1.7.2
+numpy<2
+
+# Web layer
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+yt-dlp==2024.10.7
+
+# Azure
+azure-storage-blob==12.23.1

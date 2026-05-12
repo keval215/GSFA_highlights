@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"D:\\\\GSFA_highlights\\\\data\\\\images\" \"D:\\\\GSFA_highlights\\\\data\\\\videos\")",
+      "Read(//d//**)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(.\\\\highlights\\\\Scripts\\\\python.exe *)",
+      "PowerShell(& \"D:\\\\GSFA_highlights\\\\highlights\\\\Scripts\\\\python.exe\" -c \"import supervision; print\\(supervision.__version__\\)\")",
+      "WebFetch(domain:github.com)",
+      "PowerShell(ls D:\\\\GSFA_highlights\\\\data\\\\; & \"D:\\\\GSFA_highlights\\\\highlights\\\\Scripts\\\\python.exe\" --version)",
+      "PowerShell(head *)",
+      "PowerShell(& \"D:\\\\GSFA_highlights\\\\paddle\\\\Scripts\\\\python.exe\" -c \"import paddleocr, cv2, numpy; print\\('paddleocr OK'\\); print\\('cv2', cv2.__version__\\)\")",
+      "PowerShell(& \"D:\\\\GSFA_highlights\\\\paddle\\\\Scripts\\\\pip.exe\" install easyocr 2>&1 | Select-Object -Last 5)",
+      "Bash(python -c \"from PIL import Image; im=Image.open\\('data/images/image.png'\\); print\\(im.size\\)\")",
+      "Bash(paddle/Scripts/python.exe -c \"from PIL import Image; im=Image.open\\('data/images/image.png'\\); print\\(im.size\\)\")",
+      "Bash(paddle/Scripts/python.exe scripts/crop_scoreboard.py --image data/images/image.png)",
+      "Bash(paddle/Scripts/python.exe video_highlight/ocr_test.py --input data/images/image.png)",
+      "Bash(paddle/Scripts/python.exe -c ' *)",
+      "Bash(paddle/Scripts/python.exe scripts/test_endgame_ocr.py)"
+    ]
+  }
+}

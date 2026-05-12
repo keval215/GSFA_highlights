@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GSFA Highlights</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --fg: #e6edf3;
+    --muted: #9aa4b2;
+    --accent: #f59e0b;
+    --accent-dark: #b45309;
+    --ok: #22c55e;
+    --err: #ef4444;
+    --card: #161b22;
+    --border: #30363d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+    background: var(--bg); color: var(--fg);
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  }
+  .card {
+    width: 100%; max-width: 560px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 32px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.4);
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .tagline { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+  label { display: block; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+  input[type="text"], input[type="url"] {
+    width: 100%; padding: 10px 12px;
+    background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--fg); font: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  button {
+    width: 100%; margin-top: 20px;
+    padding: 12px; border: none; border-radius: 8px;
+    background: var(--accent); color: #1c1917;
+    font: 600 15px/1.2 inherit; cursor: pointer;
+    transition: background .15s;
+  }
+  button:hover { background: var(--accent-dark); color: #fff; }
+  button:disabled { background: #4b5563; color: #9ca3af; cursor: not-allowed; }
+  .status { margin-top: 24px; display: none; }
+  .status.visible { display: block; }
+  .stage {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--muted); margin-bottom: 8px;
+  }
+  .stage strong { color: var(--fg); text-transform: capitalize; }
+  .bar {
+    height: 8px; background: #0d1117; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .bar-fill {
+    height: 100%; background: var(--accent); width: 0%;
+    transition: width .4s ease;
+  }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .meta b { color: var(--fg); }
+  .result {
+    margin-top: 20px; padding: 16px;
+    background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.3);
+    border-radius: 8px; display: none;
+  }
+  .result.visible { display: block; }
+  .result a {
+    display: inline-block; margin-top: 10px;
+    padding: 10px 16px; background: var(--ok); color: #052e15;
+    border-radius: 6px; text-decoration: none; font-weight: 600;
+  }
+  .error {
+    margin-top: 20px; padding: 14px;
+    background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+    border-radius: 8px; color: var(--err); font-size: 13px; display: none;
+    word-break: break-word;
+  }
+  .error.visible { display: block; }
+  .footer { margin-top: 28px; font-size: 11px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>GSFA Highlights</h1>
+  <div class="tagline">Paste a match YouTube URL to auto-generate a highlight reel.</div>
+
+  <form id="job-form">
+    <label for="url">YouTube URL</label>
+    <input id="url" name="url" type="url" required
+           placeholder="https://www.youtube.com/watch?v=..." autocomplete="off" />
+
+    <label for="match">Match name <span style="opacity:.7">(used in the filename)</span></label>
+    <input id="match" name="match" type="text"
+           placeholder="osfa_vs_anc" autocomplete="off" />
+
+    <button id="submit" type="submit">Generate Highlights</button>
+  </form>
+
+  <div class="status" id="status">
+    <div class="stage"><span>Status</span><strong id="stage-label">—</strong></div>
+    <div class="bar"><div class="bar-fill" id="bar"></div></div>
+    <div class="meta" id="meta"></div>
+  </div>
+
+  <div class="result" id="result">
+    <div>Done. Your highlight reel is ready.</div>
+    <a id="download" href="#" download>Download highlights.mp4</a>
+  </div>
+
+  <div class="error" id="error"></div>
+
+  <div class="footer">Single job at a time on this server. Long matches take 20–40 min on a T4 GPU.</div>
+</div>
+
+<script>
+const form = document.getElementById('job-form');
+const submitBtn = document.getElementById('submit');
+const statusBox = document.getElementById('status');
+const bar = document.getElementById('bar');
+const stageLabel = document.getElementById('stage-label');
+const meta = document.getElementById('meta');
+const result = document.getElementById('result');
+const downloadLink = document.getElementById('download');
+const errorBox = document.getElementById('error');
+
+let pollTimer = null;
+
+function show(el) { el.classList.add('visible'); }
+function hide(el) { el.classList.remove('visible'); }
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  hide(result); hide(errorBox);
+  show(statusBox);
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting…';
+  bar.style.width = '0%';
+  stageLabel.textContent = 'submitting';
+  meta.textContent = '';
+
+  const url = document.getElementById('url').value.trim();
+  const match = document.getElementById('match').value.trim();
+
+  try {
+    const resp = await fetch('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ youtube_url: url, match }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const { job_id } = await resp.json();
+    localStorage.setItem('job_id', job_id);
+    pollJob(job_id);
+  } catch (e) {
+    showError(e.message);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate Highlights';
+  }
+});
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  show(errorBox);
+}
+
+async function pollJob(jobId) {
+  if (pollTimer) clearTimeout(pollTimer);
+  try {
+    const r = await fetch(`/jobs/${jobId}`);
+    if (!r.ok) throw new Error(`Job lookup failed: HTTP ${r.status}`);
+    const j = await r.json();
+    updateUi(j);
+    if (j.status === 'done' || j.status === 'failed') return;
+  } catch (e) {
+    showError(e.message);
+    return;
+  }
+  pollTimer = setTimeout(() => pollJob(jobId), 3000);
+}
+
+function updateUi(j) {
+  stageLabel.textContent = j.stage || j.status;
+  bar.style.width = `${Math.round((j.progress || 0) * 100)}%`;
+  const bits = [];
+  if (j.duration_min) bits.push(`Video: <b>${j.duration_min} min</b>`);
+  if (j.goals_found !== undefined) bits.push(`Goals: <b>${j.goals_found}</b>`);
+  if (j.endgame_clips !== undefined) bits.push(`Endgame clips: <b>${j.endgame_clips}</b>`);
+  meta.innerHTML = bits.join(' · ');
+
+  if (j.status === 'done') {
+    bar.style.width = '100%';
+    downloadLink.href = j.result_url;
+    show(result);
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate Highlights';
+  } else if (j.status === 'failed') {
+    showError(j.error || 'Job failed.');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Generate Highlights';
+  }
+}
+
+// On page load, resume polling if we had a job in localStorage.
+const prev = localStorage.getItem('job_id');
+if (prev) {
+  show(statusBox);
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Resuming…';
+  fetch(`/jobs/${prev}`).then(r => r.ok ? r.json() : null).then(j => {
+    if (j) {
+      updateUi(j);
+      if (j.status === 'queued' || j.status === 'running') pollJob(prev);
+      else { submitBtn.disabled = false; submitBtn.textContent = 'Generate Highlights'; }
+    } else {
+      localStorage.removeItem('job_id');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Generate Highlights';
+    }
+  });
+}
+</script>
+</body>
+</html>

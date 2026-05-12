@@ -9,7 +9,7 @@ name: Deploy to Azure VM
 #   AZURE_VM_PORT           - optional; default 22
 #
 # Expected layout on the VM (one-time setup):
-#   /opt/gsfa-highlights/        -> `git clone` of this repo
+#   /opt/gsfa-highlights/repo/   -> `git clone` of this repo
 #   /etc/gsfa-highlights.env     -> env file with AZURE_STORAGE_CONNECTION_STRING, USE_GPU=1, etc.
 #   /opt/gsfa-highlights/secrets/youtube_cookies.txt
 #   Docker + nvidia-container-toolkit installed; user in the `docker` group.
@@ -37,7 +37,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            cd /opt/gsfa-highlights
+            cd /opt/gsfa-highlights/repo
             echo "[deploy] pulling latest from main..."
             git fetch --all
             git reset --hard origin/main

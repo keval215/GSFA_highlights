@@ -35,9 +35,11 @@ ROI_PENALTY_BOX     = (24,  430, 122, 497)
 UPSCALE         = 8
 FUZZY_THRESHOLD = 0.65
 PENALTY_STABLE_SEC  = 60.0   # score must remain unchanged this long to declare end
-FULLTIME_COOLDOWN_SEC = 30.0  # ignore fulltime checks for this long after halftime
-                              # (halftime banner persists onscreen and the orange
-                              # bar fuzzy-matches "FULL TIME" too)
+FULLTIME_COOLDOWN_SEC = 5.0   # short safety net after halftime; the real
+                              # defense is the brightness gate in _check_fulltime
+                              # (halftime banner is yellow / high-V, fulltime is
+                              # black / low-V at the same ROI)
+FULLTIME_DARK_V_MAX = 80     # mean V (HSV) below this = dark/fulltime overlay
 
 # State enum (string for readability in logs)
 S_PRE_HALFTIME    = "PRE_HALFTIME"
@@ -146,11 +148,23 @@ class EndgameDetector:
         return []
 
     def _check_fulltime(self, frame, t):
-        # Cooldown: the halftime banner stays on-screen for several seconds and
-        # also fuzzy-matches "FULL TIME". Block fulltime scans until the banner
-        # has cleared.
         if self._halftime_t is not None and (t - self._halftime_t) < FULLTIME_COOLDOWN_SEC:
             return []
+        # Brightness gate: halftime banner is yellow (high V), fulltime overlay
+        # is black (low V), at the same ROI. Reject bright frames before OCR.
+        h, w = frame.shape[:2]
+        ymin, xmin, ymax, xmax = ROI_FULLTIME_TEXT
+        x1 = max(0, int(xmin / 1000 * w))
+        y1 = max(0, int(ymin / 1000 * h))
+        x2 = min(w, int(xmax / 1000 * w))
+        y2 = min(h, int(ymax / 1000 * h))
+        bg = frame[y1:y2, x1:x2]
+        if bg.size == 0:
+            return []
+        mean_v = float(cv2.cvtColor(bg, cv2.COLOR_BGR2HSV)[:, :, 2].mean())
+        if mean_v >= FULLTIME_DARK_V_MAX:
+            return []
+
         res = self._read(frame, ROI_FULLTIME_TEXT)
         if _best_fuzzy(res, "FULL TIME") >= FUZZY_THRESHOLD:
             self.state = S_POST_FULLTIME

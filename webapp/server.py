@@ -2,13 +2,16 @@
 server.py — FastAPI app that wraps the highlight pipeline as a web service.
 
 Endpoints:
-    GET  /              -> index.html (file-upload form)
-    POST /jobs          -> multipart upload (file + match name) -> {"job_id"}
-    GET  /jobs/{id}     -> job status JSON
-    GET  /health        -> liveness check
+    GET  /                  -> index.html (file-upload form + history)
+    GET  /health            -> liveness check
+    POST /jobs              -> multipart upload (file + match name) -> {"job_id"}
+    GET  /jobs              -> list of jobs (running + history)
+    GET  /jobs/{id}         -> single job status JSON
+    POST /jobs/{id}/cancel  -> request cooperative cancel
+    DELETE /jobs            -> clear history + delete blobs
 
 Job lifecycle (single-process, single-VM v1):
-    queued -> running (stages: scanning -> extracting -> uploading) -> done|failed
+    queued -> running (stages: scanning -> extracting -> uploading) -> done|failed|cancelled
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import sys
 import time
 from pathlib import Path
 from uuid import uuid4
@@ -23,19 +27,20 @@ from uuid import uuid4
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
-# Make the project root importable so we can do `from video_highlight.pipeline import run_pipeline`
-import sys
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from video_highlight.pipeline import run_pipeline  # noqa: E402
-from webapp.blob import upload_and_sas  # noqa: E402
+from video_highlight.pipeline import run_pipeline, PipelineCancelled  # noqa: E402
+from webapp.blob import upload_and_sas, delete_blob  # noqa: E402
+from webapp import history  # noqa: E402
 
 
-app = FastAPI(title="GSFA Highlights", version="0.2.0")
+app = FastAPI(title="GSFA Highlights", version="0.3.0")
 
+# In-memory state for *active* jobs. Completed jobs are persisted via webapp/history.
 JOBS: dict[str, dict] = {}
+_cancel_flags: dict[str, bool] = {}
 
 _job_sem = asyncio.Semaphore(1)
 
@@ -47,6 +52,18 @@ MAX_UPLOAD_GB = float(os.environ.get("MAX_UPLOAD_GB", "15"))
 MAX_UPLOAD_BYTES = int(MAX_UPLOAD_GB * 1024 * 1024 * 1024)
 
 ALLOWED_EXTS = {".mp4", ".mkv", ".mov", ".webm"}
+TERMINAL_STATUSES = {"done", "failed", "cancelled"}
+
+
+def _is_terminal(status: str) -> bool:
+    return status in TERMINAL_STATUSES
+
+
+def _persist(job: dict) -> None:
+    try:
+        history.append_job(job)
+    except Exception as e:
+        print(f"[history] save failed: {e}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -72,14 +89,11 @@ async def create_job(
     file: UploadFile = File(...),
     match: str = Form("match"),
 ) -> dict:
-    # Fast-reject oversize bodies before we stream a single byte to disk.
     content_length = request.headers.get("content-length")
     if content_length:
         try:
             if int(content_length) > MAX_UPLOAD_BYTES:
-                raise HTTPException(
-                    413, f"File exceeds limit of {MAX_UPLOAD_GB:g} GB"
-                )
+                raise HTTPException(413, f"File exceeds limit of {MAX_UPLOAD_GB:g} GB")
         except ValueError:
             pass
 
@@ -111,13 +125,11 @@ async def create_job(
         "created_at": time.time(),
     }
 
-    # Stream the upload to disk in chunks. Never .read() the whole file —
-    # a 10 GB match would OOM the container.
     bytes_written = 0
     try:
         with dest_path.open("wb") as out:
             while True:
-                chunk = await file.read(1024 * 1024)  # 1 MB
+                chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
                 bytes_written += len(chunk)
@@ -125,9 +137,7 @@ async def create_job(
                     out.close()
                     shutil.rmtree(job_dir, ignore_errors=True)
                     JOBS.pop(job_id, None)
-                    raise HTTPException(
-                        413, f"File exceeds limit of {MAX_UPLOAD_GB:g} GB"
-                    )
+                    raise HTTPException(413, f"File exceeds limit of {MAX_UPLOAD_GB:g} GB")
                 out.write(chunk)
     except HTTPException:
         raise
@@ -144,7 +154,6 @@ async def create_job(
         raise HTTPException(400, "Uploaded file is empty")
 
     JOBS[job_id]["size_bytes"] = bytes_written
-
     bg.add_task(_run_job, job_id, dest_path, safe_match)
     return {"job_id": job_id}
 
@@ -152,16 +161,58 @@ async def create_job(
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str) -> JSONResponse:
     job = JOBS.get(job_id)
+    if job:
+        return JSONResponse(job)
+    for entry in history.load_history():
+        if entry.get("id") == job_id:
+            return JSONResponse(entry)
+    raise HTTPException(404, "Unknown job_id")
+
+
+@app.get("/jobs")
+def list_jobs() -> dict:
+    active = list(JOBS.values())
+    historical = history.load_history()
+    seen = {j["id"] for j in active}
+    merged = active + [h for h in historical if h.get("id") not in seen]
+    merged.sort(key=lambda j: j.get("finished_at") or j.get("created_at") or 0, reverse=True)
+    return {"jobs": merged[:100]}
+
+
+@app.post("/jobs/{job_id}/cancel")
+def cancel_job(job_id: str) -> dict:
+    job = JOBS.get(job_id)
     if not job:
         raise HTTPException(404, "Unknown job_id")
-    return JSONResponse(job)
+    if _is_terminal(job.get("status", "")):
+        raise HTTPException(409, f"Job already {job['status']}")
+    _cancel_flags[job_id] = True
+    job["stage"] = "cancelling"
+    return {"ok": True, "status": "cancelling"}
+
+
+@app.delete("/jobs")
+def delete_all_jobs() -> dict:
+    historical = history.clear_history()
+    failures: list[str] = []
+    for entry in historical:
+        blob_name = entry.get("blob_name")
+        if not blob_name:
+            continue
+        if not delete_blob(blob_name):
+            failures.append(blob_name)
+    return {"deleted": len(historical), "blob_failures": failures}
 
 
 async def _run_job(job_id: str, video_path: Path, match: str) -> None:
     job = JOBS[job_id]
     tmp_dir = video_path.parent
+    persisted = False
     async with _job_sem:
         try:
+            if _cancel_flags.get(job_id):
+                raise PipelineCancelled()
+
             job.update({"status": "running", "stage": "scanning", "progress": 0.0})
 
             def cb(stage: str, frac: float) -> None:
@@ -177,17 +228,21 @@ async def _run_job(job_id: str, video_path: Path, match: str) -> None:
                 match=match,
                 use_gpu=USE_GPU,
                 progress_cb=cb,
+                cancel_check=lambda: _cancel_flags.get(job_id, False),
             )
 
             if result.get("output_path") is None or not out_reel.exists():
                 job.update({
                     "status": "failed",
+                    "stage": "failed",
                     "error": "No highlights detected in this video (no goals, halftime or penalties found).",
+                    "finished_at": time.time(),
                 })
                 return
 
             job.update({"stage": "uploading", "progress": 0.0})
             blob_name = f"{match}_{job_id}.mp4"
+            job["blob_name"] = blob_name
             sas_url = await asyncio.to_thread(upload_and_sas, out_reel, blob_name)
 
             job.update({
@@ -200,10 +255,28 @@ async def _run_job(job_id: str, video_path: Path, match: str) -> None:
                 "finished_at": time.time(),
             })
 
+        except PipelineCancelled:
+            job.update({
+                "status": "cancelled",
+                "stage": "cancelled",
+                "error": "Cancelled by user",
+                "finished_at": time.time(),
+            })
         except Exception as e:
-            job.update({"status": "failed", "error": f"{type(e).__name__}: {e}"})
+            job.update({
+                "status": "failed",
+                "stage": "failed",
+                "error": f"{type(e).__name__}: {e}",
+                "finished_at": time.time(),
+            })
         finally:
+            _persist(job)
+            persisted = True
             shutil.rmtree(tmp_dir, ignore_errors=True)
+            _cancel_flags.pop(job_id, None)
+            JOBS.pop(job_id, None)
+    if not persisted:
+        _persist(job)
 
 
 @app.on_event("startup")

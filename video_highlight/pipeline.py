@@ -22,6 +22,11 @@ from typing import Callable
 
 import cv2
 
+
+class PipelineCancelled(Exception):
+    """Raised when an external cancel_check returns True mid-run."""
+
+
 # Local imports — keep CLI-style fallback for running this file directly
 try:
     from ocr_reader import ScoreReader
@@ -47,6 +52,7 @@ def run_pipeline(
     max_goals: int = 25,
     use_gpu: bool = False,
     progress_cb: Callable[[str, float], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> dict:
     """
     Run the full highlight pipeline on `input_video` and write the concatenated
@@ -87,6 +93,10 @@ def run_pipeline(
                 progress_cb(stage, max(0.0, min(1.0, frac)))
             except Exception:
                 pass  # never let a callback break the pipeline
+
+    def _check_cancel() -> None:
+        if cancel_check is not None and cancel_check():
+            raise PipelineCancelled()
 
     # --- Stage 1: load OCR + endgame detector ---
     _progress("init", 0.0)
@@ -166,6 +176,9 @@ def run_pipeline(
         ret, frame = cap.read()
         if not ret:
             break
+
+        if frame_idx % 30 == 0:
+            _check_cancel()
 
         # Progress reporting (cheap, every ~2s of real time)
         now = time.time()
@@ -306,6 +319,7 @@ def run_pipeline(
     done = 0
 
     for goal in goals:
+        _check_cancel()
         path = extract_clip(
             video_path=str(input_video),
             t_goal=goal["timestamp"],
@@ -320,6 +334,7 @@ def run_pipeline(
         _progress("extracting", done / max(1, total_clips))
 
     for ec in endgame_clips:
+        _check_cancel()
         fname = f"{match}_{ec['type']}.mp4"
         path = extract_segment(
             video_path=str(input_video),

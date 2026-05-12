@@ -29,20 +29,23 @@ def _connection_string() -> str:
     return conn
 
 
+def _container_name() -> str:
+    return os.environ.get("BLOB_CONTAINER", "highlights")
+
+
 def upload_and_sas(local_path: Path, blob_name: str) -> str:
     """
     Upload `local_path` to the configured Blob container and return a
-    time-limited SAS download URL.
+    time-limited SAS download URL that triggers Save As in the browser.
 
     Container name defaults to env BLOB_CONTAINER (default 'highlights').
     SAS expiry defaults to env BLOB_SAS_DAYS (default 7).
     """
-    container = os.environ.get("BLOB_CONTAINER", "highlights")
+    container = _container_name()
     sas_days = int(os.environ.get("BLOB_SAS_DAYS", "7"))
 
     svc = BlobServiceClient.from_connection_string(_connection_string())
 
-    # Make sure the container exists (idempotent).
     try:
         svc.create_container(container)
     except Exception:
@@ -63,5 +66,24 @@ def upload_and_sas(local_path: Path, blob_name: str) -> str:
         account_key=svc.credential.account_key,
         permission=BlobSasPermissions(read=True),
         expiry=datetime.now(timezone.utc) + timedelta(days=sas_days),
+        content_disposition=f'attachment; filename="{blob_name}"',
     )
     return f"{blob.url}?{sas}"
+
+
+def delete_blob(blob_name: str) -> bool:
+    """
+    Delete `blob_name` from the configured container. Returns True if the
+    blob was removed (or was already gone), False on any other error.
+    """
+    container = _container_name()
+    try:
+        svc = BlobServiceClient.from_connection_string(_connection_string())
+        blob = svc.get_blob_client(container=container, blob=blob_name)
+        blob.delete_blob(delete_snapshots="include")
+        return True
+    except Exception as e:
+        msg = str(e).lower()
+        if "blobnotfound" in msg or "the specified blob does not exist" in msg:
+            return True
+        return False

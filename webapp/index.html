@@ -18,31 +18,26 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 0;
+    margin: 0; padding: 24px;
     font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
     background: var(--bg); color: var(--fg);
-    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; display: flex; align-items: flex-start; justify-content: center;
   }
   .card {
-    width: 100%; max-width: 560px;
+    width: 100%; max-width: 620px;
     background: var(--card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 32px;
+    border-radius: 12px; padding: 28px 32px;
     box-shadow: 0 12px 40px rgba(0,0,0,.4);
   }
   h1 { margin: 0 0 4px; font-size: 22px; }
-  .tagline { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+  .tagline { color: var(--muted); margin-bottom: 20px; font-size: 13px; }
   label { display: block; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
-  input[type="text"] {
+  input[type="text"], input[type="file"] {
     width: 100%; padding: 10px 12px;
     background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
     color: var(--fg); font: inherit;
   }
   input:focus { outline: none; border-color: var(--accent); }
-  input[type="file"] {
-    width: 100%; padding: 10px 12px;
-    background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
-    color: var(--fg); font: inherit;
-  }
   input[type="file"]::file-selector-button {
     background: var(--border); color: var(--fg); border: 0;
     padding: 6px 12px; border-radius: 6px; margin-right: 12px;
@@ -57,13 +52,24 @@
   }
   button:hover { background: var(--accent-dark); color: #fff; }
   button:disabled { background: #4b5563; color: #9ca3af; cursor: not-allowed; }
-  .status { margin-top: 24px; display: none; }
-  .status.visible { display: block; }
-  .stage {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 13px; color: var(--muted); margin-bottom: 8px;
+  button.ghost {
+    background: transparent; color: var(--fg); border: 1px solid var(--border);
+    padding: 8px 14px; margin: 0; width: auto; font-weight: 500; font-size: 13px;
   }
-  .stage strong { color: var(--fg); text-transform: capitalize; }
+  button.ghost:hover { background: var(--border); color: var(--fg); }
+  button.danger {
+    background: transparent; color: var(--err); border: 1px solid var(--err);
+    padding: 8px 14px; margin: 0; width: auto; font-weight: 500; font-size: 13px;
+  }
+  button.danger:hover { background: rgba(239,68,68,.1); color: var(--err); }
+
+  .status { margin-top: 20px; display: none; }
+  .status.visible { display: block; }
+  .stage-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--muted); margin-bottom: 8px; gap: 12px;
+  }
+  .stage-row strong { color: var(--fg); text-transform: capitalize; }
   .bar {
     height: 8px; background: #0d1117; border-radius: 4px; overflow: hidden;
     border: 1px solid var(--border);
@@ -74,6 +80,7 @@
   }
   .meta { color: var(--muted); font-size: 12px; margin-top: 10px; }
   .meta b { color: var(--fg); }
+
   .result {
     margin-top: 20px; padding: 16px;
     background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.3);
@@ -92,6 +99,51 @@
     word-break: break-word;
   }
   .error.visible { display: block; }
+
+  details.history {
+    margin-top: 24px; border: 1px solid var(--border); border-radius: 8px;
+    background: #0d1117;
+  }
+  details.history summary {
+    cursor: pointer; padding: 12px 14px; font-size: 13px; color: var(--muted);
+    user-select: none;
+  }
+  details.history summary:hover { color: var(--fg); }
+  details.history[open] summary { border-bottom: 1px solid var(--border); color: var(--fg); }
+  .history-list { padding: 8px 0; max-height: 360px; overflow-y: auto; }
+  .history-list:empty::after {
+    content: "No past jobs."; display: block; padding: 14px;
+    color: var(--muted); font-size: 13px; text-align: center;
+  }
+  .h-row {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center;
+  }
+  .h-row:last-child { border-bottom: 0; }
+  .h-row .title { font-size: 13px; color: var(--fg); }
+  .h-row .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .h-row .actions { display: flex; gap: 8px; }
+  .h-row.running { background: rgba(245,158,11,.05); }
+  .h-row .pill {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    margin-left: 6px;
+  }
+  .pill.done { background: rgba(34,197,94,.15); color: #22c55e; }
+  .pill.running { background: rgba(245,158,11,.15); color: var(--accent); }
+  .pill.failed { background: rgba(239,68,68,.15); color: var(--err); }
+  .pill.cancelled { background: rgba(154,164,178,.2); color: var(--muted); }
+  .h-row a.dl {
+    color: var(--ok); text-decoration: none; font-size: 12px;
+    border: 1px solid var(--ok); padding: 4px 10px; border-radius: 6px;
+  }
+  .h-row a.dl:hover { background: rgba(34,197,94,.1); }
+
+  .history-footer {
+    padding: 10px 14px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end;
+  }
+
   .footer { margin-top: 28px; font-size: 11px; color: var(--muted); text-align: center; }
 </style>
 </head>
@@ -102,27 +154,41 @@
 
   <form id="job-form">
     <label for="file">Match video <span style="opacity:.7">(mp4, mkv, mov, webm — up to 15 GB)</span></label>
-    <input id="file" name="file" type="file" accept=".mp4,.mkv,.mov,.webm,video/mp4,video/x-matroska,video/quicktime,video/webm" required />
+    <input id="file" name="file" type="file"
+           accept=".mp4,.mkv,.mov,.webm,video/mp4,video/x-matroska,video/quicktime,video/webm"
+           required />
 
     <label for="match">Match name <span style="opacity:.7">(used in the filename)</span></label>
-    <input id="match" name="match" type="text"
-           placeholder="osfa_vs_anc" autocomplete="off" />
+    <input id="match" name="match" type="text" placeholder="osfa_vs_anc" autocomplete="off" />
 
     <button id="submit" type="submit">Generate Highlights</button>
   </form>
 
   <div class="status" id="status">
-    <div class="stage"><span>Status</span><strong id="stage-label">—</strong></div>
+    <div class="stage-row">
+      <span>Status</span>
+      <span><strong id="stage-label">—</strong>
+        <button id="cancel-btn" class="danger" style="display:none; margin-left:10px;">Cancel</button>
+      </span>
+    </div>
     <div class="bar"><div class="bar-fill" id="bar"></div></div>
     <div class="meta" id="meta"></div>
   </div>
 
   <div class="result" id="result">
     <div>Done. Your highlight reel is ready.</div>
-    <a id="download" href="#" download>Download highlights.mp4</a>
+    <a id="download" href="#">Download highlights.mp4</a>
   </div>
 
   <div class="error" id="error"></div>
+
+  <details class="history" id="history">
+    <summary id="history-summary">Past highlights (0)</summary>
+    <div class="history-list" id="history-list"></div>
+    <div class="history-footer">
+      <button class="danger" id="clear-all">Clear all</button>
+    </div>
+  </details>
 
   <div class="footer">Single job at a time on this server. Long matches take 20–40 min on a T4 GPU.</div>
 </div>
@@ -138,29 +204,65 @@ const meta = document.getElementById('meta');
 const result = document.getElementById('result');
 const downloadLink = document.getElementById('download');
 const errorBox = document.getElementById('error');
+const cancelBtn = document.getElementById('cancel-btn');
+const historyEl = document.getElementById('history');
+const historySummary = document.getElementById('history-summary');
+const historyList = document.getElementById('history-list');
+const clearAllBtn = document.getElementById('clear-all');
 
+let activeJobId = null;
 let pollTimer = null;
+let historyTimer = null;
 
 function show(el) { el.classList.add('visible'); }
 function hide(el) { el.classList.remove('visible'); }
 function fmtBytes(n) {
+  if (!n && n !== 0) return '';
   if (n < 1024) return n + ' B';
   if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
   if (n < 1024*1024*1024) return (n/1024/1024).toFixed(1) + ' MB';
   return (n/1024/1024/1024).toFixed(2) + ' GB';
 }
+function fmtTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString();
+}
+
+function resetUiForNewSubmit() {
+  hide(result); hide(errorBox);
+  show(statusBox);
+  bar.style.width = '0%';
+  stageLabel.textContent = 'queued';
+  meta.innerHTML = '';
+  cancelBtn.style.display = 'none';
+}
+
+function clearActiveUi() {
+  hide(statusBox); hide(result); hide(errorBox);
+  activeJobId = null;
+  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+}
+
+function resetSubmit() {
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Generate Highlights';
+}
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  show(errorBox);
+}
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
-  hide(result); hide(errorBox);
-  show(statusBox);
 
   const f = fileInput.files[0];
   if (!f) { showError('Pick a video file first.'); return; }
 
+  resetUiForNewSubmit();
   submitBtn.disabled = true;
   submitBtn.textContent = 'Uploading…';
-  bar.style.width = '0%';
   stageLabel.textContent = 'uploading';
   meta.innerHTML = `File: <b>${f.name}</b> · Size: <b>${fmtBytes(f.size)}</b>`;
 
@@ -184,12 +286,16 @@ form.addEventListener('submit', (e) => {
     if (xhr.status >= 200 && xhr.status < 300) {
       try {
         const { job_id } = JSON.parse(xhr.responseText);
-        localStorage.setItem('job_id', job_id);
+        activeJobId = job_id;
         bar.style.width = '0%';
         stageLabel.textContent = 'queued';
         meta.innerHTML = `File: <b>${f.name}</b> · Job: <b>${job_id}</b>`;
         submitBtn.textContent = 'Processing…';
+        cancelBtn.style.display = 'inline-block';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cancel';
         pollJob(job_id);
+        refreshHistory();
       } catch (e) {
         showError('Bad response from server.');
         resetSubmit();
@@ -208,15 +314,40 @@ form.addEventListener('submit', (e) => {
   xhr.send(fd);
 });
 
-function resetSubmit() {
-  submitBtn.disabled = false;
-  submitBtn.textContent = 'Generate Highlights';
-}
+cancelBtn.addEventListener('click', async () => {
+  if (!activeJobId) return;
+  cancelBtn.disabled = true;
+  cancelBtn.textContent = 'Cancelling…';
+  try {
+    const r = await fetch(`/jobs/${activeJobId}/cancel`, { method: 'POST' });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+  } catch (e) {
+    showError(e.message);
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = 'Cancel';
+  }
+});
 
-function showError(msg) {
-  errorBox.textContent = msg;
-  show(errorBox);
-}
+clearAllBtn.addEventListener('click', async () => {
+  if (!confirm('Delete all past highlight links and their Azure copies? This cannot be undone.')) return;
+  clearAllBtn.disabled = true;
+  try {
+    const r = await fetch('/jobs', { method: 'DELETE' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (data.blob_failures && data.blob_failures.length) {
+      showError(`Cleared ${data.deleted} entries, but failed to delete ${data.blob_failures.length} blob(s).`);
+    }
+    await refreshHistory();
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    clearAllBtn.disabled = false;
+  }
+});
 
 async function pollJob(jobId) {
   if (pollTimer) clearTimeout(pollTimer);
@@ -224,8 +355,11 @@ async function pollJob(jobId) {
     const r = await fetch(`/jobs/${jobId}`);
     if (!r.ok) throw new Error(`Job lookup failed: HTTP ${r.status}`);
     const j = await r.json();
-    updateUi(j);
-    if (j.status === 'done' || j.status === 'failed') return;
+    updateActiveUi(j);
+    if (j.status === 'done' || j.status === 'failed' || j.status === 'cancelled') {
+      await refreshHistory();
+      return;
+    }
   } catch (e) {
     showError(e.message);
     return;
@@ -233,44 +367,101 @@ async function pollJob(jobId) {
   pollTimer = setTimeout(() => pollJob(jobId), 3000);
 }
 
-function updateUi(j) {
+function updateActiveUi(j) {
   stageLabel.textContent = j.stage || j.status;
   bar.style.width = `${Math.round((j.progress || 0) * 100)}%`;
   const bits = [];
   if (j.filename) bits.push(`File: <b>${j.filename}</b>`);
+  if (j.size_bytes) bits.push(`Size: <b>${fmtBytes(j.size_bytes)}</b>`);
   if (j.goals_found !== undefined) bits.push(`Goals: <b>${j.goals_found}</b>`);
-  if (j.endgame_clips !== undefined) bits.push(`Endgame clips: <b>${j.endgame_clips}</b>`);
+  if (j.endgame_clips !== undefined) bits.push(`Endgame: <b>${j.endgame_clips}</b>`);
   meta.innerHTML = bits.join(' · ');
+
+  const inFlight = (j.status === 'queued' || j.status === 'running');
+  cancelBtn.style.display = inFlight ? 'inline-block' : 'none';
 
   if (j.status === 'done') {
     bar.style.width = '100%';
     downloadLink.href = j.result_url;
+    downloadLink.textContent = `Download ${j.blob_name || 'highlights.mp4'}`;
     show(result);
     resetSubmit();
   } else if (j.status === 'failed') {
     showError(j.error || 'Job failed.');
     resetSubmit();
+  } else if (j.status === 'cancelled') {
+    showError('Job cancelled.');
+    resetSubmit();
   }
 }
 
-// On page load, resume polling if we had a job in localStorage.
-// Note: only processing-side jobs can resume — an interrupted upload is lost.
-const prev = localStorage.getItem('job_id');
-if (prev) {
-  show(statusBox);
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Resuming…';
-  fetch(`/jobs/${prev}`).then(r => r.ok ? r.json() : null).then(j => {
-    if (j) {
-      updateUi(j);
-      if (j.status === 'queued' || j.status === 'running') pollJob(prev);
-      else resetSubmit();
-    } else {
-      localStorage.removeItem('job_id');
-      resetSubmit();
+function renderHistory(jobs) {
+  historySummary.textContent = `Past highlights (${jobs.length})`;
+  historyList.innerHTML = '';
+  for (const j of jobs) {
+    const row = document.createElement('div');
+    row.className = 'h-row' + (j.status === 'running' || j.status === 'queued' ? ' running' : '');
+
+    const left = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.innerHTML = `<b>${j.match || '(no name)'}</b>` +
+      ` <span class="pill ${j.status}">${j.status}</span>`;
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    const subBits = [];
+    if (j.filename) subBits.push(j.filename);
+    if (j.size_bytes) subBits.push(fmtBytes(j.size_bytes));
+    if (j.goals_found !== undefined) subBits.push(`${j.goals_found} goals`);
+    if (j.endgame_clips !== undefined) subBits.push(`${j.endgame_clips} endgame`);
+    if (j.finished_at) subBits.push(fmtTime(j.finished_at));
+    else if (j.created_at) subBits.push(fmtTime(j.created_at));
+    if ((j.status === 'running' || j.status === 'queued') && j.stage)
+      subBits.push(`stage: ${j.stage} (${Math.round((j.progress||0)*100)}%)`);
+    if (j.error) subBits.push(j.error);
+    sub.textContent = subBits.join(' · ');
+    left.appendChild(title);
+    left.appendChild(sub);
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    if (j.status === 'done' && j.result_url) {
+      const a = document.createElement('a');
+      a.className = 'dl';
+      a.href = j.result_url;
+      a.textContent = 'Download';
+      actions.appendChild(a);
     }
-  });
+    if (j.status === 'running' || j.status === 'queued') {
+      const btn = document.createElement('button');
+      btn.className = 'danger';
+      btn.textContent = 'Cancel';
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; btn.textContent = 'Cancelling…';
+        try { await fetch(`/jobs/${j.id}/cancel`, { method: 'POST' }); }
+        catch {}
+        refreshHistory();
+      });
+      actions.appendChild(btn);
+    }
+
+    row.appendChild(left);
+    row.appendChild(actions);
+    historyList.appendChild(row);
+  }
 }
+
+async function refreshHistory() {
+  try {
+    const r = await fetch('/jobs');
+    if (!r.ok) return;
+    const data = await r.json();
+    renderHistory(data.jobs || []);
+  } catch {}
+}
+
+refreshHistory();
+historyTimer = setInterval(refreshHistory, 5000);
 </script>
 </body>
 </html>

@@ -81,7 +81,7 @@ def extract_clip(
         "-t", f"{duration:.3f}",
         "-vf", f"fade=t=out:st={fade_start:.3f}:d={fade:.3f}",
         "-af", f"afade=t=out:st={fade_start:.3f}:d={fade:.3f}",
-        "-c:v", "libopenh264", "-b:v", "2M",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
         str(out_path),
     )
@@ -116,7 +116,7 @@ def extract_segment(
         "-t", f"{duration:.3f}",
         "-vf", f"fade=t=out:st={fade_start:.3f}:d={fade:.3f}",
         "-af", f"afade=t=out:st={fade_start:.3f}:d={fade:.3f}",
-        "-c:v", "libopenh264", "-b:v", "2M",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
         str(out_path),
     )

@@ -138,7 +138,7 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 
 ## 4. Storage Layout (64 GB OS Disk)
 
-The 64 GB disk is sufficient for this workload given that job working directories are cleaned up after each run (see `server.py` `_sweep_stale_work_dirs`). Raw match footage downloads are transient — yt-dlp fetches to `/mnt/data/jobs/<job_id>/`, the pipeline runs, and the directory is deleted on completion.
+The 64 GB disk is sufficient for this workload given that job working directories are cleaned up after each run (see `server.py` `_sweep_stale_work_dirs`). Uploaded match footage is transient — the browser uploads to `/mnt/data/jobs/<job_id>/`, the pipeline runs, and the directory is deleted on completion. Plan for ~15 GB headroom per concurrent job (current `_job_sem` allows only one at a time).
 
 If you find yourself accumulating video on disk, Azure Blob Storage is the clean offload target for raw footage archives (see Section 8).
 
@@ -148,17 +148,13 @@ If you find yourself accumulating video on disk, Azure Blob Storage is the clean
 /                        ~10 GB   OS + Docker images
 /var/lib/docker          ~15 GB   Container layers (including the CUDA base ~6 GB)
 /mnt/data/jobs           ~30 GB   Working dir for in-flight video jobs (volume-mounted)
-/opt/gsfa-highlights/    <1 MB    Secrets directory (cookies file, env file)
 ```
 
-### Create the working and secrets directories
+### Create the working directory
 
 ```bash
 sudo mkdir -p /mnt/data/jobs
 sudo chown azureuser:azureuser /mnt/data/jobs
-
-sudo mkdir -p /opt/gsfa-highlights/secrets
-sudo chown azureuser:azureuser /opt/gsfa-highlights/secrets
 ```
 
 ### Monitor disk usage
@@ -189,8 +185,8 @@ AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=...;A
 # GPU flag — set to 1 since the T4 is available
 USE_GPU=1
 
-# Safety cap: refuse videos longer than 120 minutes
-MAX_VIDEO_DURATION_MIN=120
+# Safety cap: reject uploads larger than this many gigabytes
+MAX_UPLOAD_GB=15
 EOF
 
 sudo chmod 600 /etc/gsfa-highlights.env
@@ -234,19 +230,35 @@ GIT_SSH_COMMAND='ssh -i ~/.ssh/gsfa_deploy' \
 
 ---
 
-## 7. YouTube Cookies File
+## 7. Large-Upload Configuration
 
-`yt-dlp` requires authentication cookies for age-restricted or members-only YouTube content. Export the cookies from a logged-in browser session:
+The webapp now accepts direct file uploads up to `MAX_UPLOAD_GB` (default 15 GB). If you put Nginx in front of Uvicorn (recommended for public exposure), it must be configured to accept large bodies and not buffer them to disk.
 
-1. Install the "Get cookies.txt LOCALLY" browser extension.
-2. Go to youtube.com while logged in, export cookies as `youtube_cookies.txt`.
-3. Copy the file to the VM:
+Example `nginx` server block:
 
-```bash
-scp youtube_cookies.txt azureuser@4.186.40.179:/opt/gsfa-highlights/secrets/youtube_cookies.txt
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 15G;         # match MAX_UPLOAD_GB
+    client_body_timeout 1800s;        # 30 min — accommodates slow uplinks
+    proxy_request_buffering off;      # stream the body straight to FastAPI
+    proxy_read_timeout 1800s;
+    proxy_send_timeout 1800s;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
 ```
 
-The `docker-compose.yml` mounts this path read-only into the container.
+`proxy_request_buffering off` is critical — without it nginx buffers the entire 10 GB body to its own disk before forwarding, doubling I/O and stalling the start of the response.
+
+If you expose Uvicorn on port 8000 directly (no nginx), no extra config is needed — FastAPI streams `UploadFile` to a temp file by default.
 
 ---
 
@@ -330,7 +342,7 @@ az storage container create \
   --public-access off
 ```
 
-Raw match footage does not need to live on the VM disk at all. If you're pulling from YouTube, yt-dlp fetches it transiently. If you have local match files, upload them to a `raw-footage` Blob container and download on demand rather than keeping them on the OS disk. This is the clean alternative to provisioning a larger data disk.
+Uploaded match footage lives on the VM only transiently — the browser uploads to `/mnt/data/jobs/<job_id>/`, the pipeline runs, and the directory is deleted on completion. Only the final highlight reel is persisted in Blob.
 
 ---
 
@@ -459,10 +471,10 @@ Highlight reels are already uploaded to Blob Storage on job completion (`webapp/
 - [ ] SSH into VM, run system bootstrap (Section 1)
 - [ ] Install NVIDIA driver 550 + reboot, verify `nvidia-smi` (Section 2)
 - [ ] Install Docker Engine + NVIDIA Container Toolkit, verify GPU passthrough (Section 3)
-- [ ] Create `/mnt/data/jobs` and `/opt/gsfa-highlights/secrets` (Section 4)
-- [ ] Write `/etc/gsfa-highlights.env` with Blob connection string and `USE_GPU=1` (Section 5)
+- [ ] Create `/mnt/data/jobs` (Section 4)
+- [ ] Write `/etc/gsfa-highlights.env` with Blob connection string, `USE_GPU=1`, `MAX_UPLOAD_GB=15` (Section 5)
 - [ ] Clone repo with PAT or deploy key (Section 6)
-- [ ] Copy `youtube_cookies.txt` to `/opt/gsfa-highlights/secrets/` (Section 7)
+- [ ] Configure nginx for large uploads if exposing publicly (Section 7)
 - [ ] Create Azure storage account + `highlights` container (Section 10)
 - [ ] `docker compose up -d --build`, verify `/health` endpoint (Section 8)
 - [ ] Lock down NSG — SSH + port 8000 to your IP only (Section 9)

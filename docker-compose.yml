@@ -20,10 +20,8 @@ services:
       - /etc/gsfa-highlights.env       # AZURE_STORAGE_CONNECTION_STRING, USE_GPU, etc.
     environment:
       - WORK_DIR=/tmp/jobs
-      - YOUTUBE_COOKIES_FILE=/secrets/youtube_cookies.txt
     volumes:
-      - /mnt/data/jobs:/tmp/jobs                  # large working dir for video downloads
-      - /opt/gsfa-highlights/secrets:/secrets     # cookies file (writable so yt-dlp can refresh rotated session cookies)
+      - /mnt/data/jobs:/tmp/jobs                  # large working dir for uploaded video + intermediates
     # GPU access — required for USE_GPU=1. Comment out the deploy block if running CPU-only.
     deploy:
       resources:

@@ -32,12 +32,22 @@
   h1 { margin: 0 0 4px; font-size: 22px; }
   .tagline { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
   label { display: block; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
-  input[type="text"], input[type="url"] {
+  input[type="text"] {
     width: 100%; padding: 10px 12px;
     background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
     color: var(--fg); font: inherit;
   }
   input:focus { outline: none; border-color: var(--accent); }
+  input[type="file"] {
+    width: 100%; padding: 10px 12px;
+    background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--fg); font: inherit;
+  }
+  input[type="file"]::file-selector-button {
+    background: var(--border); color: var(--fg); border: 0;
+    padding: 6px 12px; border-radius: 6px; margin-right: 12px;
+    cursor: pointer; font: inherit;
+  }
   button {
     width: 100%; margin-top: 20px;
     padding: 12px; border: none; border-radius: 8px;
@@ -88,12 +98,11 @@
 <body>
 <div class="card">
   <h1>GSFA Highlights</h1>
-  <div class="tagline">Paste a match YouTube URL to auto-generate a highlight reel.</div>
+  <div class="tagline">Upload a match video to auto-generate a highlight reel.</div>
 
   <form id="job-form">
-    <label for="url">YouTube URL</label>
-    <input id="url" name="url" type="url" required
-           placeholder="https://www.youtube.com/watch?v=..." autocomplete="off" />
+    <label for="file">Match video <span style="opacity:.7">(mp4, mkv, mov, webm — up to 15 GB)</span></label>
+    <input id="file" name="file" type="file" accept=".mp4,.mkv,.mov,.webm,video/mp4,video/x-matroska,video/quicktime,video/webm" required />
 
     <label for="match">Match name <span style="opacity:.7">(used in the filename)</span></label>
     <input id="match" name="match" type="text"
@@ -121,6 +130,7 @@
 <script>
 const form = document.getElementById('job-form');
 const submitBtn = document.getElementById('submit');
+const fileInput = document.getElementById('file');
 const statusBox = document.getElementById('status');
 const bar = document.getElementById('bar');
 const stageLabel = document.getElementById('stage-label');
@@ -133,39 +143,75 @@ let pollTimer = null;
 
 function show(el) { el.classList.add('visible'); }
 function hide(el) { el.classList.remove('visible'); }
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1024*1024*1024) return (n/1024/1024).toFixed(1) + ' MB';
+  return (n/1024/1024/1024).toFixed(2) + ' GB';
+}
 
-form.addEventListener('submit', async (e) => {
+form.addEventListener('submit', (e) => {
   e.preventDefault();
   hide(result); hide(errorBox);
   show(statusBox);
+
+  const f = fileInput.files[0];
+  if (!f) { showError('Pick a video file first.'); return; }
+
   submitBtn.disabled = true;
-  submitBtn.textContent = 'Submitting…';
+  submitBtn.textContent = 'Uploading…';
   bar.style.width = '0%';
-  stageLabel.textContent = 'submitting';
-  meta.textContent = '';
+  stageLabel.textContent = 'uploading';
+  meta.innerHTML = `File: <b>${f.name}</b> · Size: <b>${fmtBytes(f.size)}</b>`;
 
-  const url = document.getElementById('url').value.trim();
   const match = document.getElementById('match').value.trim();
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('match', match);
 
-  try {
-    const resp = await fetch('/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ youtube_url: url, match }),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.detail || `HTTP ${resp.status}`);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/jobs', true);
+
+  xhr.upload.onprogress = (ev) => {
+    if (!ev.lengthComputable) return;
+    const pct = ev.loaded / ev.total;
+    bar.style.width = (pct * 100).toFixed(1) + '%';
+    meta.innerHTML =
+      `File: <b>${f.name}</b> · Uploaded: <b>${fmtBytes(ev.loaded)} / ${fmtBytes(ev.total)}</b>`;
+  };
+
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        const { job_id } = JSON.parse(xhr.responseText);
+        localStorage.setItem('job_id', job_id);
+        bar.style.width = '0%';
+        stageLabel.textContent = 'queued';
+        meta.innerHTML = `File: <b>${f.name}</b> · Job: <b>${job_id}</b>`;
+        submitBtn.textContent = 'Processing…';
+        pollJob(job_id);
+      } catch (e) {
+        showError('Bad response from server.');
+        resetSubmit();
+      }
+    } else {
+      let msg = `HTTP ${xhr.status}`;
+      try { msg = JSON.parse(xhr.responseText).detail || msg; } catch {}
+      showError(msg);
+      resetSubmit();
     }
-    const { job_id } = await resp.json();
-    localStorage.setItem('job_id', job_id);
-    pollJob(job_id);
-  } catch (e) {
-    showError(e.message);
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Generate Highlights';
-  }
+  };
+
+  xhr.onerror = () => { showError('Upload failed (network error).'); resetSubmit(); };
+  xhr.onabort = () => { showError('Upload aborted.'); resetSubmit(); };
+
+  xhr.send(fd);
 });
+
+function resetSubmit() {
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Generate Highlights';
+}
 
 function showError(msg) {
   errorBox.textContent = msg;
@@ -191,7 +237,7 @@ function updateUi(j) {
   stageLabel.textContent = j.stage || j.status;
   bar.style.width = `${Math.round((j.progress || 0) * 100)}%`;
   const bits = [];
-  if (j.duration_min) bits.push(`Video: <b>${j.duration_min} min</b>`);
+  if (j.filename) bits.push(`File: <b>${j.filename}</b>`);
   if (j.goals_found !== undefined) bits.push(`Goals: <b>${j.goals_found}</b>`);
   if (j.endgame_clips !== undefined) bits.push(`Endgame clips: <b>${j.endgame_clips}</b>`);
   meta.innerHTML = bits.join(' · ');
@@ -200,16 +246,15 @@ function updateUi(j) {
     bar.style.width = '100%';
     downloadLink.href = j.result_url;
     show(result);
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Generate Highlights';
+    resetSubmit();
   } else if (j.status === 'failed') {
     showError(j.error || 'Job failed.');
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Generate Highlights';
+    resetSubmit();
   }
 }
 
 // On page load, resume polling if we had a job in localStorage.
+// Note: only processing-side jobs can resume — an interrupted upload is lost.
 const prev = localStorage.getItem('job_id');
 if (prev) {
   show(statusBox);
@@ -219,11 +264,10 @@ if (prev) {
     if (j) {
       updateUi(j);
       if (j.status === 'queued' || j.status === 'running') pollJob(prev);
-      else { submitBtn.disabled = false; submitBtn.textContent = 'Generate Highlights'; }
+      else resetSubmit();
     } else {
       localStorage.removeItem('job_id');
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Generate Highlights';
+      resetSubmit();
     }
   });
 }

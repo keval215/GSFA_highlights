@@ -35,11 +35,15 @@ ROI_PENALTY_BOX     = (24,  430, 122, 497)
 UPSCALE         = 8
 FUZZY_THRESHOLD = 0.65
 PENALTY_STABLE_SEC  = 60.0   # score must remain unchanged this long to declare end
-FULLTIME_COOLDOWN_SEC = 5.0   # short safety net after halftime; the real
-                              # defense is the brightness gate in _check_fulltime
-                              # (halftime banner is yellow / high-V, fulltime is
-                              # black / low-V at the same ROI)
-FULLTIME_DARK_V_MAX = 80     # mean V (HSV) below this = dark/fulltime overlay
+FULLTIME_COOLDOWN_SEC = 15.0  # safety net after halftime; primary defense is the
+                              # hue gate in _check_fulltime
+# Hue gate (OpenCV 0-179 scale, user-calibrated): halftime banner is orange,
+# fulltime banner is dark navy. Require navy + reject orange before OCR.
+HALFTIME_HUE_CENTER = 15
+HALFTIME_HUE_TOL    = 12
+FULLTIME_HUE_CENTER = 117
+FULLTIME_HUE_TOL    = 15
+FULLTIME_SAT_MIN    = 60
 
 # State enum (string for readability in logs)
 S_PRE_HALFTIME    = "PRE_HALFTIME"
@@ -150,8 +154,6 @@ class EndgameDetector:
     def _check_fulltime(self, frame, t):
         if self._halftime_t is not None and (t - self._halftime_t) < FULLTIME_COOLDOWN_SEC:
             return []
-        # Brightness gate: halftime banner is yellow (high V), fulltime overlay
-        # is black (low V), at the same ROI. Reject bright frames before OCR.
         h, w = frame.shape[:2]
         ymin, xmin, ymax, xmax = ROI_FULLTIME_TEXT
         x1 = max(0, int(xmin / 1000 * w))
@@ -161,8 +163,16 @@ class EndgameDetector:
         bg = frame[y1:y2, x1:x2]
         if bg.size == 0:
             return []
-        mean_v = float(cv2.cvtColor(bg, cv2.COLOR_BGR2HSV)[:, :, 2].mean())
-        if mean_v >= FULLTIME_DARK_V_MAX:
+        hsv = cv2.cvtColor(bg, cv2.COLOR_BGR2HSV)
+        mean_h = float(hsv[:, :, 0].mean())
+        mean_s = float(hsv[:, :, 1].mean())
+        # Reject if the ROI is still the orange halftime banner.
+        if (abs(mean_h - HALFTIME_HUE_CENTER) <= HALFTIME_HUE_TOL
+                and mean_s >= FULLTIME_SAT_MIN):
+            return []
+        # Require the navy fulltime banner before running OCR.
+        if not (abs(mean_h - FULLTIME_HUE_CENTER) <= FULLTIME_HUE_TOL
+                and mean_s >= FULLTIME_SAT_MIN):
             return []
 
         res = self._read(frame, ROI_FULLTIME_TEXT)

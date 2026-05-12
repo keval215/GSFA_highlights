@@ -24,8 +24,10 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+import json
+
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -189,6 +191,64 @@ def cancel_job(job_id: str) -> dict:
     _cancel_flags[job_id] = True
     job["stage"] = "cancelling"
     return {"ok": True, "status": "cancelling"}
+
+
+@app.delete("/jobs/{job_id}/upload")
+def delete_upload(job_id: str) -> dict:
+    """Best-effort cleanup of a partial upload when the client aborts before processing starts."""
+    job = JOBS.get(job_id)
+    if job and job.get("status") not in ("queued", None):
+        raise HTTPException(409, f"Job already {job.get('status')}")
+    job_dir = WORK_DIR / job_id
+    try:
+        shutil.rmtree(job_dir, ignore_errors=True)
+    except Exception:
+        pass
+    JOBS.pop(job_id, None)
+    _cancel_flags.pop(job_id, None)
+    return {"ok": True}
+
+
+@app.get("/jobs/{job_id}/events")
+async def stream_job_events(job_id: str) -> StreamingResponse:
+    """SSE stream of job state updates. Closes when the job reaches a terminal status."""
+
+    async def gen():
+        last_snapshot: str | None = None
+        # Brief grace period: job may be created just after upload completes.
+        for _ in range(20):
+            if job_id in JOBS:
+                break
+            for entry in history.load_history():
+                if entry.get("id") == job_id:
+                    yield f"data: {json.dumps(entry)}\n\n"
+                    return
+            await asyncio.sleep(0.1)
+        else:
+            yield f"data: {json.dumps({'error': 'unknown job_id', 'id': job_id})}\n\n"
+            return
+
+        while True:
+            job = JOBS.get(job_id)
+            if job is None:
+                for entry in history.load_history():
+                    if entry.get("id") == job_id:
+                        yield f"data: {json.dumps(entry)}\n\n"
+                        return
+                return
+            snap = json.dumps(job, sort_keys=True, default=str)
+            if snap != last_snapshot:
+                last_snapshot = snap
+                yield f"data: {snap}\n\n"
+            if _is_terminal(job.get("status", "")):
+                return
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.delete("/jobs")

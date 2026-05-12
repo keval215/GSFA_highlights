@@ -62,6 +62,10 @@
     padding: 8px 14px; margin: 0; width: auto; font-weight: 500; font-size: 13px;
   }
   button.danger:hover { background: rgba(239,68,68,.1); color: var(--err); }
+  button.danger.block {
+    width: 100%; padding: 10px; font-size: 14px; font-weight: 600;
+  }
+  .cancel-row { margin-top: 12px; }
 
   .status { margin-top: 20px; display: none; }
   .status.visible { display: block; }
@@ -167,12 +171,13 @@
   <div class="status" id="status">
     <div class="stage-row">
       <span>Status</span>
-      <span><strong id="stage-label">—</strong>
-        <button id="cancel-btn" class="danger" style="display:none; margin-left:10px;">Cancel</button>
-      </span>
+      <span><strong id="stage-label">—</strong></span>
     </div>
     <div class="bar"><div class="bar-fill" id="bar"></div></div>
     <div class="meta" id="meta"></div>
+    <div class="cancel-row">
+      <button id="cancel-btn" class="danger block" style="display:none;">Cancel</button>
+    </div>
   </div>
 
   <div class="result" id="result">
@@ -211,8 +216,8 @@ const historyList = document.getElementById('history-list');
 const clearAllBtn = document.getElementById('clear-all');
 
 let activeJobId = null;
-let pollTimer = null;
-let historyTimer = null;
+let activeStream = null;
+let activeXhr = null;
 
 function show(el) { el.classList.add('visible'); }
 function hide(el) { el.classList.remove('visible'); }
@@ -235,13 +240,17 @@ function resetUiForNewSubmit() {
   bar.style.width = '0%';
   stageLabel.textContent = 'queued';
   meta.innerHTML = '';
-  cancelBtn.style.display = 'none';
+  cancelBtn.style.display = 'inline-block';
+  cancelBtn.disabled = false;
+  cancelBtn.textContent = 'Cancel upload';
 }
 
 function clearActiveUi() {
   hide(statusBox); hide(result); hide(errorBox);
   activeJobId = null;
-  if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  if (activeStream) { activeStream.close(); activeStream = null; }
+  activeXhr = null;
+  cancelBtn.style.display = 'none';
 }
 
 function resetSubmit() {
@@ -272,6 +281,7 @@ form.addEventListener('submit', (e) => {
   fd.append('match', match);
 
   const xhr = new XMLHttpRequest();
+  activeXhr = xhr;
   xhr.open('POST', '/jobs', true);
 
   xhr.upload.onprogress = (ev) => {
@@ -283,6 +293,7 @@ form.addEventListener('submit', (e) => {
   };
 
   xhr.onload = () => {
+    activeXhr = null;
     if (xhr.status >= 200 && xhr.status < 300) {
       try {
         const { job_id } = JSON.parse(xhr.responseText);
@@ -294,28 +305,48 @@ form.addEventListener('submit', (e) => {
         cancelBtn.style.display = 'inline-block';
         cancelBtn.disabled = false;
         cancelBtn.textContent = 'Cancel';
-        pollJob(job_id);
+        streamJob(job_id);
         refreshHistory();
       } catch (e) {
         showError('Bad response from server.');
+        cancelBtn.style.display = 'none';
         resetSubmit();
       }
     } else {
       let msg = `HTTP ${xhr.status}`;
       try { msg = JSON.parse(xhr.responseText).detail || msg; } catch {}
       showError(msg);
+      cancelBtn.style.display = 'none';
       resetSubmit();
     }
   };
 
-  xhr.onerror = () => { showError('Upload failed (network error).'); resetSubmit(); };
-  xhr.onabort = () => { showError('Upload aborted.'); resetSubmit(); };
+  xhr.onerror = () => {
+    activeXhr = null;
+    cancelBtn.style.display = 'none';
+    showError('Upload failed (network error).');
+    resetSubmit();
+  };
+  xhr.onabort = () => {
+    activeXhr = null;
+    cancelBtn.style.display = 'none';
+    showError('Upload aborted.');
+    resetSubmit();
+  };
 
   xhr.send(fd);
 });
 
 cancelBtn.addEventListener('click', async () => {
+  // Upload phase: no job_id yet, but XHR is in flight -> abort it.
+  if (!activeJobId && activeXhr) {
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = 'Cancelling…';
+    try { activeXhr.abort(); } catch {}
+    return;
+  }
   if (!activeJobId) return;
+  // Processing phase: cooperative cancel on the backend.
   cancelBtn.disabled = true;
   cancelBtn.textContent = 'Cancelling…';
   try {
@@ -324,6 +355,7 @@ cancelBtn.addEventListener('click', async () => {
       const err = await r.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP ${r.status}`);
     }
+    refreshHistory();
   } catch (e) {
     showError(e.message);
     cancelBtn.disabled = false;
@@ -349,22 +381,30 @@ clearAllBtn.addEventListener('click', async () => {
   }
 });
 
-async function pollJob(jobId) {
-  if (pollTimer) clearTimeout(pollTimer);
-  try {
-    const r = await fetch(`/jobs/${jobId}`);
-    if (!r.ok) throw new Error(`Job lookup failed: HTTP ${r.status}`);
-    const j = await r.json();
-    updateActiveUi(j);
-    if (j.status === 'done' || j.status === 'failed' || j.status === 'cancelled') {
-      await refreshHistory();
+function streamJob(jobId) {
+  if (activeStream) { activeStream.close(); activeStream = null; }
+  const es = new EventSource(`/jobs/${jobId}/events`);
+  activeStream = es;
+  es.onmessage = (e) => {
+    let j;
+    try { j = JSON.parse(e.data); } catch { return; }
+    if (j.error) {
+      showError(j.error);
+      es.close();
+      activeStream = null;
       return;
     }
-  } catch (e) {
-    showError(e.message);
-    return;
-  }
-  pollTimer = setTimeout(() => pollJob(jobId), 3000);
+    updateActiveUi(j);
+    if (j.status === 'done' || j.status === 'failed' || j.status === 'cancelled') {
+      es.close();
+      activeStream = null;
+      refreshHistory();
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    activeStream = null;
+  };
 }
 
 function updateActiveUi(j) {
@@ -461,7 +501,6 @@ async function refreshHistory() {
 }
 
 refreshHistory();
-historyTimer = setInterval(refreshHistory, 5000);
 </script>
 </body>
 </html>

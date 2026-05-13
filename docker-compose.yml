@@ -15,7 +15,7 @@ services:
     container_name: gsfa-highlights
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - /etc/gsfa-highlights.env       # AZURE_STORAGE_CONNECTION_STRING, USE_GPU, etc.
     environment:

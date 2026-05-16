@@ -17,12 +17,13 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # Default scoreboard ROI definitions — normalized 0-1000 coords (ymin, xmin, ymax, xmax).
-# Used as fallback when auto-calibration fails (e.g. no scoreboard in first 30s).
+# Wide halves of the universal scoreboard box. _parse_digits_easyocr picks the
+# rightmost digit (the score is always flush right; team names are filtered by allowlist).
 # ---------------------------------------------------------------------------
 _DEFAULT_ROIS = {
-    "timer":       (33, 436, 124, 497),
-    "team1_score": (47, 542,  77, 558),
-    "team2_score": (87, 542, 118, 558),
+    "timer":       (10, 412, 155, 480),
+    "team1_score": (25, 540,  85, 585),
+    "team2_score": (90, 540, 150, 585),
 }
 
 # Upscale before OCR — small crops (score digits can be ~17x21 px) need enlarging
@@ -51,24 +52,28 @@ def crop_roi(frame: np.ndarray, roi_name: str, rois: dict) -> np.ndarray:
 
 def _parse_digits_easyocr(results: list, max_value: int = 99) -> int | None:
     """
-    Pick the highest-confidence valid integer from an EasyOCR result list,
-    rejecting values above `max_value`. Each result item is (bbox, text, conf).
+    Pick the RIGHTMOST valid digit detection (confidence as tiebreaker), since
+    the score is always flush against the right edge of the scoreboard row.
+    Team names / logos to the left are filtered out by the digit-only allowlist.
 
-    Best-confidence beats first-found: when EasyOCR returns both a clean `1`
-    detection and a noisy `10` hallucination on the same crop, the confident
-    `1` wins.
+    Each result item is (bbox, text, conf). Values > max_value are rejected.
     """
-    best_conf, best_val = -1.0, None
-    for (_bbox, text, conf) in results:
+    candidates = []
+    for (bbox, text, conf) in results:
         digits = "".join(c for c in text if c.isdigit())
         if not digits:
             continue
         val = int(digits)
         if val > max_value:
             continue
-        if conf > best_conf:
-            best_conf, best_val = conf, val
-    return best_val
+        # bbox is [[x0,y0], [x1,y0], [x1,y1], [x0,y1]] — use x-center
+        x_center = (bbox[0][0] + bbox[2][0]) / 2
+        candidates.append((x_center, conf, val))
+    if not candidates:
+        return None
+    # Rightmost first, then highest confidence as tiebreaker
+    candidates.sort(key=lambda c: (-c[0], -c[1]))
+    return candidates[0][2]
 
 
 def _parse_timer_easyocr(results: list) -> str | None:

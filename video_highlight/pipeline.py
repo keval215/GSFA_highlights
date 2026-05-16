@@ -125,16 +125,12 @@ def run_pipeline(
     print(f"         Endgame OCR sample rate: every {endgame_stride} frames (~{endgame_fps} fps)")
     print(f"         Stability filter: {confirm} consecutive matches required\n")
 
-    # --- Calibration: auto-detect scoreboard bar position from first 30s ---
-    print("[Stage 2] Calibrating scoreboard ROI...")
+    # --- Scoreboard ROIs: fixed wide halves of the universal box ---
     frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     rois = calibrate_rois(cap, (frame_h, frame_w), UNIVERSAL_BOX)
-    if rois is not None:
-        reader.update_rois(rois)
-        print(f"[Stage 2] Scoreboard bar detected — ROIs auto-calibrated.")
-    else:
-        print("[Stage 2] Bar not detected — using default ROIs.")
+    reader.update_rois(rois)
+    print("[Stage 2] Using fixed universal-box ROIs for score OCR.")
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     endgame_clips: list[dict] = []

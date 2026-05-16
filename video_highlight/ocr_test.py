@@ -23,7 +23,7 @@ parser.add_argument("--out",    default="data/diagnostics/scoreboard",
 args = parser.parse_args()
 
 sys.path.insert(0, str(Path(__file__).parent))
-from ocr_reader import ScoreReader, crop_roi
+from ocr_reader import ScoreReader, crop_roi, _DEFAULT_ROIS
 
 inp = Path(args.input)
 if not inp.exists():
@@ -49,7 +49,7 @@ out_dir.mkdir(parents=True, exist_ok=True)
 
 # Save crops that will be fed to OCR
 for roi_name in ("timer", "team1_score", "team2_score"):
-    crop = crop_roi(frame, roi_name)
+    crop = crop_roi(frame, roi_name, _DEFAULT_ROIS)
     if crop.size:
         p = out_dir / f"ocr_input_{roi_name}.png"
         cv2.imwrite(str(p), crop)

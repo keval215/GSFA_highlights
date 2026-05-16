@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PRE_ROLL  = 10.0   # seconds before the detected goal timestamp
+PRE_ROLL  = 30.0   # seconds before the detected goal timestamp
 POST_ROLL =  5.0   # seconds after
 FADE_DURATION = 0.5  # seconds of fade-out at end of each clip
 

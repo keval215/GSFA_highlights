@@ -32,11 +32,13 @@ try:
     from ocr_reader import ScoreReader
     from endgame_detector import EndgameDetector, PENALTY_STABLE_SEC, S_PENALTIES_ACTIVE
     from clip_extractor import extract_clip, extract_segment, concat_clips
+    from scoreboard_detector import calibrate_rois, UNIVERSAL_BOX
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     from ocr_reader import ScoreReader
     from endgame_detector import EndgameDetector, PENALTY_STABLE_SEC, S_PENALTIES_ACTIVE
     from clip_extractor import extract_clip, extract_segment, concat_clips
+    from scoreboard_detector import calibrate_rois, UNIVERSAL_BOX
 
 
 def run_pipeline(
@@ -46,7 +48,7 @@ def run_pipeline(
     match: str = "match",
     fps: float = 2.0,
     endgame_fps: float = 1.0,
-    pre: float = 15.0,
+    pre: float = 30.0,
     post: float = 5.0,
     confirm: int = 3,
     max_goals: int = 25,
@@ -122,6 +124,18 @@ def run_pipeline(
     print(f"         Score OCR sample rate  : every {stride} frames (~{fps} fps)")
     print(f"         Endgame OCR sample rate: every {endgame_stride} frames (~{endgame_fps} fps)")
     print(f"         Stability filter: {confirm} consecutive matches required\n")
+
+    # --- Calibration: auto-detect scoreboard bar position from first 30s ---
+    print("[Stage 2] Calibrating scoreboard ROI...")
+    frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    rois = calibrate_rois(cap, (frame_h, frame_w), UNIVERSAL_BOX)
+    if rois is not None:
+        reader.update_rois(rois)
+        print(f"[Stage 2] Scoreboard bar detected — ROIs auto-calibrated.")
+    else:
+        print("[Stage 2] Bar not detected — using default ROIs.")
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     endgame_clips: list[dict] = []
     goals: list[dict] = []
@@ -385,7 +399,7 @@ def _main_cli() -> int:
     p.add_argument("--out-dir", default="clips")
     p.add_argument("--output", default="highlights.mp4")
     p.add_argument("--fps", type=float, default=2.0)
-    p.add_argument("--pre", type=float, default=15.0)
+    p.add_argument("--pre", type=float, default=30.0)
     p.add_argument("--post", type=float, default=5.0)
     p.add_argument("--confirm", type=int, default=3)
     p.add_argument("--max-goals", type=int, default=25)

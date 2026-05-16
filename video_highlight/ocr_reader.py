@@ -6,7 +6,8 @@ PaddlePaddle 3.x has a known Windows PIR runtime bug; EasyOCR is the reliable
 fallback listed in approach.md.
 
 Scoreboard overlay is a fixed broadcast graphic burned into the top-center.
-Normalized coordinates (0-1000 scale) hardcoded from test image analysis.
+Normalized coordinates (0-1000 scale). Default ROIs are fallback values; the
+pipeline calibrates them per-video via scoreboard_detector.calibrate_rois().
 
 Pixel conversion: pixel = (norm / 1000) * dimension
 """
@@ -15,9 +16,10 @@ import cv2
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Scoreboard ROI definitions — normalized 0-1000 coords (ymin, xmin, ymax, xmax)
+# Default scoreboard ROI definitions — normalized 0-1000 coords (ymin, xmin, ymax, xmax).
+# Used as fallback when auto-calibration fails (e.g. no scoreboard in first 30s).
 # ---------------------------------------------------------------------------
-_ROIS = {
+_DEFAULT_ROIS = {
     "timer":       (33, 436, 124, 497),
     "team1_score": (47, 542,  77, 558),
     "team2_score": (87, 542, 118, 558),
@@ -35,10 +37,10 @@ def _norm_to_px(ymin_n, xmin_n, ymax_n, xmax_n, h, w):
     return max(0, x1), max(0, y1), min(w, x2), min(h, y2)
 
 
-def crop_roi(frame: np.ndarray, roi_name: str) -> np.ndarray:
+def crop_roi(frame: np.ndarray, roi_name: str, rois: dict) -> np.ndarray:
     """Return the upscaled crop for a named ROI from a full video frame."""
     h, w = frame.shape[:2]
-    coords = _ROIS[roi_name]
+    coords = rois[roi_name]
     x1, y1, x2, y2 = _norm_to_px(*coords, h, w)
     crop = frame[y1:y2, x1:x2]
     if crop.size == 0:
@@ -97,11 +99,16 @@ class ScoreReader:
         # (reduces false positives from font artefacts)
         self._ocr = easyocr.Reader(["en"], gpu=gpu, verbose=False)
         self._digit_allowlist = "0123456789"
+        self._rois = dict(_DEFAULT_ROIS)
+
+    def update_rois(self, rois: dict) -> None:
+        """Replace the active ROI set with calibrated values from scoreboard_detector."""
+        self._rois = rois
 
     def read(self, frame: np.ndarray) -> tuple[int | None, int | None]:
         """Return (team1_score, team2_score) from a BGR frame, or None if unreadable."""
-        home_crop = crop_roi(frame, "team1_score")
-        away_crop = crop_roi(frame, "team2_score")
+        home_crop = crop_roi(frame, "team1_score", self._rois)
+        away_crop = crop_roi(frame, "team2_score", self._rois)
 
         home, away = None, None
         if home_crop.size:
@@ -118,7 +125,7 @@ class ScoreReader:
 
     def read_timer(self, frame: np.ndarray) -> str | None:
         """Return MM:SS timer string or None."""
-        crop = crop_roi(frame, "timer")
+        crop = crop_roi(frame, "timer", self._rois)
         if not crop.size:
             return None
         # Timer allows digits and colon

@@ -130,8 +130,10 @@ def calibrate_rois(
 
     return {
         # Score digit columns — right edge of bar, split top/bottom for each team.
-        "team1_score": (25, digit_x1,  84, digit_x2),
-        "team2_score": (85, digit_x1, 150, digit_x2),
+        # Y ranges match the original tight hardcoded values (derived from test image analysis).
+        # Only X is dynamic — Y position of digits is consistent across all videos.
+        "team1_score": (47, digit_x1,  77, digit_x2),
+        "team2_score": (87, digit_x1, 118, digit_x2),
         # Timer stays on the left side of the bar — doesn't shift with name length.
-        "timer":       (10, 412, 155, 480),
+        "timer":       (33, 412, 124, 480),
     }

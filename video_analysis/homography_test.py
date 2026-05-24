@@ -8,8 +8,21 @@ Steps:
      When a frame has < 4 valid keypoints → interpolate H from nearest
      neighbours that did have a valid H.
   4. For each frame: project pitch wireframe through H⁻¹ onto the image
-     Drawn: court boundary, halfway line, centre circle, penalty D-arcs
+     Drawn: field boundary + halfway line (matching the 13-keypoint template)
   5. Write annotated video + debug frames + JSON log.
+
+Keypoint layout (world coords):
+  pt11 ——— pt10 ——— pt9 ——— pt8 ——— pt7     ← far touchline
+  |                  |                  |
+  pt0               pt12               pt6   ← goal post level (mid height)
+  |                  |                  |
+  pt1 ——— pt2 ——— pt3 ——— pt4 ——— pt5     ← near touchline
+
+  Corners:          pt1, pt11, pt7, pt5
+  Goal post level:  pt0 (left), pt6 (right)
+  Halfway line:     pt9 (far), pt12 (centre/kickoff), pt3 (near)
+  Intermediate:     pt2 divides pt1→pt3, pt4 divides pt3→pt5
+                    pt10 divides pt11→pt9, pt8 divides pt9→pt7
 
 Outputs (all inside video_analysis/):
   homography_overlay.mp4
@@ -24,7 +37,6 @@ Usage:
 from __future__ import annotations
 
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -47,91 +59,71 @@ LOG_PATH   = OUT_DIR / "keypoint_log.json"
 # ---------------------------------------------------------------------------
 BOX_CONF_THRESH  = 0.25   # field bounding-box confidence floor
 KP_CONF_THRESH   = 0.50   # keypoint confidence required for H computation
-MIN_KP_FOR_H     = 4      # need at least this many confident points to solve H
+MIN_KP_FOR_H     = 4      # need at least this many confident points to solve H (OpenCV minimum)
 DEBUG_EVERY      = 30     # save a labeled debug frame every N frames
+EXCLUDE_FROM_H   = {0, 6} # goal posts — 3-D structures, not painted on the floor
 
 # ---------------------------------------------------------------------------
 # PITCH COORDINATE MAP
-#   x : 0 m  =  left goal line   →  40 m  =  right goal line
-#   y : 0 m  =  far touchline    →  20 m  =  near touchline (camera side)
+#   x : 0 m  =  left touchline   →  PITCH_W m  =  right touchline
+#   y : 0 m  =  far touchline    →  PITCH_H m  =  near touchline (camera side)
 #
-#  ⚠️  INITIAL GUESSES — verified against debug/frame_0000.jpg.
-#      If the wireframe overlay is off, adjust the numbers here and re-run.
-#      Confident assignments (from per-frame tracking + visual inspection):
-#        KP3  → appears bottom-left  frame 0  → near-left corner  (0, 20)
-#        KP4  → tracks to image centre         → halfway × near   (20, 20)
-#        KP9  → appears far-left     frame 0  → far-left corner   (0, ~3)
-#        KP12 → appears left-mid     frame 0  → left goal midline (0, 10)
-#        KP7  → upper-right, hi-conf, pairs KP11 → right penalty far (34, 0)
-#        KP8  → upper-left, hi-conf           → left penalty far  (6,  0)
+#  Layout matches the 13-keypoint YOLO template exactly:
+#
+#  pt11 ——— pt10 ——— pt9 ——— pt8 ——— pt7     y=0  (far)
+#  |                  |                  |
+#  pt0               pt12               pt6         (mid height)
+#  |                  |                  |
+#  pt1 ——— pt2 ——— pt3 ——— pt4 ——— pt5     y=H  (near)
 # ---------------------------------------------------------------------------
+PITCH_W, PITCH_H = 40.0, 20.0   # metres — real futsal pitch
+
 PITCH_KEYPOINTS: dict[int, tuple[float, float]] = {
-    0:  (20.0,  0.0),   # halfway × far touchline
-    1:  ( 0.0,  0.0),   # far-left corner  (pairs with KP5)
-    2:  (40.0,  0.0),   # far-right corner
-    3:  ( 0.0, 20.0),   # near-left corner                ← LIKELY
-    4:  (20.0, 20.0),   # halfway × near touchline        ← CONFIDENT
-    5:  (40.0, 20.0),   # near-right corner  (pairs with KP1)
-    6:  (40.0, 10.0),   # right goal midpoint
-    7:  (34.0,  0.0),   # right penalty area × far touch  ← LIKELY (pairs KP11)
-    8:  ( 6.0,  0.0),   # left  penalty area × far touch  ← LIKELY
-    9:  ( 0.0,  3.0),   # far-left, just inside far corner ← LIKELY
-   10:  (40.0,  3.0),   # far-right, just inside far corner
-   11:  ( 6.0, 20.0),   # left  penalty area × near touch  (pairs KP7)
-   12:  ( 0.0, 10.0),   # left goal midpoint               ← LIKELY
+    0:  ( 0.0, 10.0),  # left goal post — mid of left goal line  [excluded from H]
+    1:  ( 0.0, 20.0),  # near-left corner
+    2:  (10.0, 20.0),  # near touchline mid-left  (W/4)
+    3:  (20.0, 20.0),  # halfway × near touchline
+    4:  (30.0, 20.0),  # near touchline mid-right (3W/4)
+    5:  (40.0, 20.0),  # near-right corner
+    6:  (40.0, 10.0),  # right goal post — mid of right goal line [excluded from H]
+    7:  (40.0,  0.0),  # far-right corner
+    8:  (30.0,  0.0),  # far touchline mid-right  (3W/4)
+    9:  (20.0,  0.0),  # halfway × far touchline
+   10:  (10.0,  0.0),  # far touchline mid-left   (W/4)
+   11:  ( 0.0,  0.0),  # far-left corner
+   12:  (20.0, 10.0),  # centre spot / kickoff point
 }
 
 # ---------------------------------------------------------------------------
 # PITCH WIREFRAME  (world coords, metres)
-# These use KNOWN court geometry — independent of keypoint guesses.
+# Drawn from the 13-keypoint template only — no penalty areas, no arcs.
+#
+#  pt11 ——— pt10 ——— pt9 ——— pt8 ——— pt7     ← far touchline
+#  |                  |                  |
+#  pt0               pt12               pt6   ← goal post level
+#  |                  |                  |
+#  pt1 ——— pt2 ——— pt3 ——— pt4 ——— pt5     ← near touchline
 # ---------------------------------------------------------------------------
-PITCH_W, PITCH_H = 40.0, 20.0   # metres
-PENALTY_SPOT_X   = 6.0           # left penalty spot x
-CIRCLE_R         = 3.0           # centre-circle radius
-PENALTY_ARC_R    = 6.0           # penalty D-arc radius
-
 
 def _poly_pts(points: list[tuple[float, float]]) -> np.ndarray:
     """Convert list of (x, y) world points to float32 array for polylines."""
     return np.array(points, dtype=np.float32)
 
 
-def _circle_poly(cx: float, cy: float, r: float, n: int = 32) -> np.ndarray:
-    angles = np.linspace(0, 2 * math.pi, n, endpoint=False)
-    return np.column_stack([cx + r * np.cos(angles),
-                            cy + r * np.sin(angles)]).astype(np.float32)
-
-
-def _arc_poly(cx: float, cy: float, r: float,
-              a_start: float, a_end: float, n: int = 24) -> np.ndarray:
-    angles = np.linspace(a_start, a_end, n)
-    return np.column_stack([cx + r * np.cos(angles),
-                            cy + r * np.sin(angles)]).astype(np.float32)
-
-
-# Court boundary
+# Field boundary — four corners as a closed rectangle
 WIREFRAME_BOUNDARY = [
-    _poly_pts([(0, 0), (PITCH_W, 0), (PITCH_W, PITCH_H), (0, PITCH_H)]),
+    _poly_pts([(0.0, 0.0), (40.0, 0.0), (40.0, 20.0), (0.0, 20.0)]),
 ]
 
-# Halfway line
+# Halfway line — pt9 (20,0) → pt3 (20,20)
 WIREFRAME_LINES = [
-    _poly_pts([(PITCH_W / 2, 0), (PITCH_W / 2, PITCH_H)]),
+    _poly_pts([(20.0, 0.0), (20.0, 20.0)]),
 ]
 
-# Centre circle
-WIREFRAME_CIRCLES = [
-    _circle_poly(PITCH_W / 2, PITCH_H / 2, CIRCLE_R),
-]
-
-# Left penalty D-arc (faces inward, i.e., toward field / +x direction)
-# Semicircle centered on left penalty spot (6, 10), arc from ~270° to ~90° (field side)
-_lpa_cx, _lpa_cy = PENALTY_SPOT_X, PITCH_H / 2
-WIREFRAME_ARCS = [
-    _arc_poly(_lpa_cx, _lpa_cy, PENALTY_ARC_R,
-              a_start=-math.pi / 2, a_end=math.pi / 2, n=24),   # left arc
-    _arc_poly(PITCH_W - _lpa_cx, _lpa_cy, PENALTY_ARC_R,
-              a_start=math.pi / 2, a_end=3 * math.pi / 2, n=24),  # right arc (mirror)
+# Goal mouths — standard futsal 3 m wide, centred on y=10 → y 8.5–11.5
+WIREFRAME_GOALS = [
+    _poly_pts([( 0.0,  8.5), ( 0.0, 11.5)]),   # left goal
+    _poly_pts([(40.0,  8.5), (40.0, 11.5)]),   # right goal
 ]
 
 # ---------------------------------------------------------------------------
@@ -164,7 +156,7 @@ def draw_wireframe(frame: np.ndarray, H_inv: np.ndarray) -> None:
         cv2.polylines(frame, [pts_int], isClosed=closed,
                       color=color, thickness=thickness, lineType=cv2.LINE_AA)
 
-    # Boundary — white
+    # Field boundary — white closed rectangle
     for poly in WIREFRAME_BOUNDARY:
         _draw_poly(poly, color=(255, 255, 255), closed=True, thickness=3)
 
@@ -172,13 +164,9 @@ def draw_wireframe(frame: np.ndarray, H_inv: np.ndarray) -> None:
     for line in WIREFRAME_LINES:
         _draw_poly(line, color=(255, 255, 255), closed=False, thickness=2)
 
-    # Centre circle — cyan
-    for circle in WIREFRAME_CIRCLES:
-        _draw_poly(circle, color=(0, 255, 255), closed=True, thickness=2)
-
-    # Penalty arcs — yellow
-    for arc in WIREFRAME_ARCS:
-        _draw_poly(arc, color=(0, 215, 255), closed=False, thickness=2)
+    # Goal mouths — yellow (3 m wide on each goal line)
+    for goal in WIREFRAME_GOALS:
+        _draw_poly(goal, color=(0, 215, 255), closed=False, thickness=4)
 
 
 def draw_keypoints_debug(frame: np.ndarray,
@@ -275,7 +263,7 @@ def run(video_path: str = VIDEO_PATH,
                 py = float(xys[i][1])
                 kp_data.append({"idx": i, "px": px, "py": py, "conf": c})
 
-                if c >= KP_CONF_THRESH and i in PITCH_KEYPOINTS:
+                if c >= KP_CONF_THRESH and i in PITCH_KEYPOINTS and i not in EXCLUDE_FROM_H:
                     src_pts.append([px, py])
                     dst_pts.append(list(PITCH_KEYPOINTS[i]))
 
@@ -285,9 +273,12 @@ def run(video_path: str = VIDEO_PATH,
             H_raw, mask = cv2.findHomography(src_np, dst_np,
                                               cv2.RANSAC, 5.0)
             if H_raw is not None:
-                inliers = int(mask.sum()) if mask is not None else 0
-                if inliers >= MIN_KP_FOR_H:
-                    H = H_raw
+                if np.linalg.cond(H_raw) > 1e7:
+                    H_raw = None   # truly degenerate (near-singular) — interpolate instead
+                else:
+                    inliers = int(mask.sum()) if mask is not None else 0
+                    if inliers >= MIN_KP_FOR_H:
+                        H = H_raw
 
         H_list.append(H)
         frame_data.append({
@@ -438,9 +429,9 @@ def run(video_path: str = VIDEO_PATH,
     print()
     print("  VISUAL CHECK:")
     print("  - Play homography_overlay.mp4.")
-    print("  - The white court boundary + cyan circle + yellow arcs")
-    print("    should track the real court markings as the camera pans.")
-    print("  - If they don't, adjust PITCH_KEYPOINTS at the top of this file.")
+    print("  - White field boundary + white halfway line should")
+    print("    track the real pitch markings as the camera pans.")
+    print("  - If they drift, adjust PITCH_KEYPOINTS at the top of this file.")
     print("=" * 60)
 
 

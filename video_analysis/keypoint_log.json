@@ -82,7 +82,7 @@
         "conf": 0.8735202550888062
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -168,7 +168,7 @@
         "conf": 0.8739174604415894
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -254,7 +254,7 @@
         "conf": 0.87422776222229
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -340,7 +340,7 @@
         "conf": 0.872746467590332
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -426,7 +426,7 @@
         "conf": 0.8763719797134399
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -512,7 +512,7 @@
         "conf": 0.8715522289276123
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -598,7 +598,7 @@
         "conf": 0.8712196350097656
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -684,7 +684,7 @@
         "conf": 0.8715834617614746
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -770,7 +770,7 @@
         "conf": 0.8715227842330933
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -856,7 +856,7 @@
         "conf": 0.867613673210144
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -942,7 +942,7 @@
         "conf": 0.8649728894233704
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1028,7 +1028,7 @@
         "conf": 0.8644672632217407
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1114,7 +1114,7 @@
         "conf": 0.8579568862915039
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1200,7 +1200,7 @@
         "conf": 0.8438483476638794
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1286,7 +1286,7 @@
         "conf": 0.8441088199615479
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1372,7 +1372,7 @@
         "conf": 0.8396173715591431
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1458,7 +1458,7 @@
         "conf": 0.839044451713562
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1544,7 +1544,7 @@
         "conf": 0.8365728855133057
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1630,7 +1630,7 @@
         "conf": 0.8362648487091064
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1716,7 +1716,7 @@
         "conf": 0.8273742198944092
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1802,7 +1802,7 @@
         "conf": 0.8269299268722534
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1888,7 +1888,7 @@
         "conf": 0.8310397267341614
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -1974,7 +1974,7 @@
         "conf": 0.8152929544448853
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -2060,7 +2060,7 @@
         "conf": 0.8177602887153625
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -2146,7 +2146,7 @@
         "conf": 0.7854019999504089
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -2232,7 +2232,7 @@
         "conf": 0.765121579170227
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -2318,7 +2318,7 @@
         "conf": 0.7641481757164001
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -2404,7 +2404,7 @@
         "conf": 0.7190126180648804
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -2490,7 +2490,7 @@
         "conf": 0.6722541451454163
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -2576,7 +2576,7 @@
         "conf": 0.6667137145996094
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -2662,7 +2662,7 @@
         "conf": 0.6319591403007507
       }
     ],
-    "n_used": 5,
+    "n_used": 4,
     "H_solved": true
   },
   {
@@ -2748,8 +2748,8 @@
         "conf": 0.4451334774494171
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 32,
@@ -2834,8 +2834,8 @@
         "conf": 0.4453381299972534
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 33,
@@ -2920,8 +2920,8 @@
         "conf": 0.4347735643386841
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 34,
@@ -3006,8 +3006,8 @@
         "conf": 0.4210633337497711
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 35,
@@ -3092,8 +3092,8 @@
         "conf": 0.41802534461021423
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 36,
@@ -3178,8 +3178,8 @@
         "conf": 0.4161404073238373
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 37,
@@ -3264,8 +3264,8 @@
         "conf": 0.38926392793655396
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 38,
@@ -3350,8 +3350,8 @@
         "conf": 0.38712379336357117
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 39,
@@ -3436,8 +3436,8 @@
         "conf": 0.34944039583206177
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 40,
@@ -3522,8 +3522,8 @@
         "conf": 0.3291630744934082
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 41,
@@ -3608,8 +3608,8 @@
         "conf": 0.32811665534973145
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 42,
@@ -3694,8 +3694,8 @@
         "conf": 0.32201820611953735
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 43,
@@ -3780,8 +3780,8 @@
         "conf": 0.3147955536842346
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 44,
@@ -3866,8 +3866,8 @@
         "conf": 0.3155897557735443
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 45,
@@ -3952,8 +3952,8 @@
         "conf": 0.3058803975582123
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 46,
@@ -4038,8 +4038,8 @@
         "conf": 0.3000413477420807
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 47,
@@ -4124,8 +4124,8 @@
         "conf": 0.29988372325897217
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 48,
@@ -4210,8 +4210,8 @@
         "conf": 0.28424757719039917
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 49,
@@ -4296,8 +4296,8 @@
         "conf": 0.2729716897010803
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 50,
@@ -4382,8 +4382,8 @@
         "conf": 0.2737622559070587
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 51,
@@ -4468,8 +4468,8 @@
         "conf": 0.27238383889198303
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 52,
@@ -4554,8 +4554,8 @@
         "conf": 0.2696511149406433
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 53,
@@ -4640,8 +4640,8 @@
         "conf": 0.2665574252605438
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 54,
@@ -4726,8 +4726,8 @@
         "conf": 0.2551020383834839
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 55,
@@ -4812,8 +4812,8 @@
         "conf": 0.24947039783000946
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 56,
@@ -4898,8 +4898,8 @@
         "conf": 0.24897000193595886
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 57,
@@ -4984,8 +4984,8 @@
         "conf": 0.24701254069805145
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 58,
@@ -5070,8 +5070,8 @@
         "conf": 0.31412479281425476
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 59,
@@ -5156,8 +5156,8 @@
         "conf": 0.31533557176589966
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 60,
@@ -5242,8 +5242,8 @@
         "conf": 0.30938413739204407
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 61,
@@ -5328,8 +5328,8 @@
         "conf": 0.2954624891281128
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 62,
@@ -5414,8 +5414,8 @@
         "conf": 0.2969762980937958
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 63,
@@ -5500,8 +5500,8 @@
         "conf": 0.2825154960155487
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 64,
@@ -5586,8 +5586,8 @@
         "conf": 0.27880358695983887
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 65,
@@ -5672,8 +5672,8 @@
         "conf": 0.2822023034095764
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 66,
@@ -5758,8 +5758,8 @@
         "conf": 0.28787076473236084
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 67,
@@ -5844,8 +5844,8 @@
         "conf": 0.2863929569721222
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 68,
@@ -5930,8 +5930,8 @@
         "conf": 0.2865389585494995
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 69,
@@ -6016,8 +6016,8 @@
         "conf": 0.28170832991600037
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 70,
@@ -6102,8 +6102,8 @@
         "conf": 0.26976415514945984
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 71,
@@ -6188,8 +6188,8 @@
         "conf": 0.26711881160736084
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 72,
@@ -6274,8 +6274,8 @@
         "conf": 0.26213622093200684
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 73,
@@ -6360,8 +6360,8 @@
         "conf": 0.2586704194545746
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 74,
@@ -6446,8 +6446,8 @@
         "conf": 0.2583969235420227
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 75,
@@ -6532,8 +6532,8 @@
         "conf": 0.26016202569007874
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 76,
@@ -6618,8 +6618,8 @@
         "conf": 0.2590877115726471
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 77,
@@ -6704,8 +6704,8 @@
         "conf": 0.2577800154685974
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 78,
@@ -6790,8 +6790,8 @@
         "conf": 0.2593466341495514
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 79,
@@ -6876,8 +6876,8 @@
         "conf": 0.25180140137672424
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 80,
@@ -6962,8 +6962,8 @@
         "conf": 0.2515735626220703
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 81,
@@ -7048,8 +7048,8 @@
         "conf": 0.2442835122346878
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 82,
@@ -7134,8 +7134,8 @@
         "conf": 0.2430112361907959
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 83,
@@ -7220,8 +7220,8 @@
         "conf": 0.24078504741191864
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 84,
@@ -7306,8 +7306,8 @@
         "conf": 0.23770110309123993
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 85,
@@ -7392,8 +7392,8 @@
         "conf": 0.23466753959655762
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 86,
@@ -7478,8 +7478,8 @@
         "conf": 0.23435431718826294
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 87,
@@ -7564,8 +7564,8 @@
         "conf": 0.23690949380397797
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 88,
@@ -7650,8 +7650,8 @@
         "conf": 0.2360161542892456
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 89,
@@ -7736,8 +7736,8 @@
         "conf": 0.22778190672397614
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 90,
@@ -7822,8 +7822,8 @@
         "conf": 0.22391730546951294
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 91,
@@ -7908,8 +7908,8 @@
         "conf": 0.21962982416152954
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 92,
@@ -7994,8 +7994,8 @@
         "conf": 0.220163956284523
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 93,
@@ -8080,8 +8080,8 @@
         "conf": 0.22001604735851288
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 94,
@@ -8166,8 +8166,8 @@
         "conf": 0.22068649530410767
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 95,
@@ -8252,8 +8252,8 @@
         "conf": 0.21955905854701996
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 96,
@@ -8338,8 +8338,8 @@
         "conf": 0.2162225991487503
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 97,
@@ -8424,8 +8424,8 @@
         "conf": 0.21204403042793274
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 98,
@@ -8510,8 +8510,8 @@
         "conf": 0.21193307638168335
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 99,
@@ -8596,8 +8596,8 @@
         "conf": 0.20745153725147247
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 100,
@@ -8682,8 +8682,8 @@
         "conf": 0.2057882696390152
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 101,
@@ -8768,8 +8768,8 @@
         "conf": 0.20363236963748932
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 102,
@@ -8854,8 +8854,8 @@
         "conf": 0.20327642560005188
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 103,
@@ -8940,8 +8940,8 @@
         "conf": 0.20510348677635193
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 104,
@@ -9026,8 +9026,8 @@
         "conf": 0.20518063008785248
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 105,
@@ -9112,8 +9112,8 @@
         "conf": 0.20258097350597382
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 106,
@@ -9198,8 +9198,8 @@
         "conf": 0.20209968090057373
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 107,
@@ -9284,8 +9284,8 @@
         "conf": 0.20292511582374573
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 108,
@@ -9370,8 +9370,8 @@
         "conf": 0.19876524806022644
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 109,
@@ -9456,8 +9456,8 @@
         "conf": 0.1825322061777115
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 110,
@@ -9542,8 +9542,8 @@
         "conf": 0.18151195347309113
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 111,
@@ -9628,8 +9628,8 @@
         "conf": 0.17857208847999573
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 112,
@@ -9714,8 +9714,8 @@
         "conf": 0.17532745003700256
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 113,
@@ -9800,8 +9800,8 @@
         "conf": 0.17781774699687958
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 114,
@@ -9886,8 +9886,8 @@
         "conf": 0.17932263016700745
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 115,
@@ -9972,8 +9972,8 @@
         "conf": 0.17866408824920654
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 116,
@@ -10058,8 +10058,8 @@
         "conf": 0.1784781515598297
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 117,
@@ -10144,8 +10144,8 @@
         "conf": 0.17827719449996948
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 118,
@@ -10230,8 +10230,8 @@
         "conf": 0.17590759694576263
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 119,
@@ -10316,8 +10316,8 @@
         "conf": 0.1750330626964569
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 120,
@@ -10402,8 +10402,8 @@
         "conf": 0.18041503429412842
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 121,
@@ -10488,8 +10488,8 @@
         "conf": 0.18185655772686005
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 122,
@@ -10574,8 +10574,8 @@
         "conf": 0.18151189386844635
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 123,
@@ -10660,8 +10660,8 @@
         "conf": 0.18596826493740082
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 124,
@@ -10746,8 +10746,8 @@
         "conf": 0.1834305375814438
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 125,
@@ -10832,8 +10832,8 @@
         "conf": 0.18395116925239563
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 126,
@@ -10918,8 +10918,8 @@
         "conf": 0.17985275387763977
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 127,
@@ -11004,8 +11004,8 @@
         "conf": 0.1777292788028717
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 128,
@@ -11090,8 +11090,8 @@
         "conf": 0.1776634007692337
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 129,
@@ -11176,8 +11176,8 @@
         "conf": 0.17805840075016022
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 130,
@@ -11262,8 +11262,8 @@
         "conf": 0.17583060264587402
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 131,
@@ -11348,8 +11348,8 @@
         "conf": 0.187470480799675
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 132,
@@ -11434,8 +11434,8 @@
         "conf": 0.18612506985664368
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 133,
@@ -11520,8 +11520,8 @@
         "conf": 0.1706591099500656
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 134,
@@ -11606,8 +11606,8 @@
         "conf": 0.17024466395378113
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 135,
@@ -11692,8 +11692,8 @@
         "conf": 0.16806982457637787
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 136,
@@ -11778,8 +11778,8 @@
         "conf": 0.16802725195884705
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 137,
@@ -11864,8 +11864,8 @@
         "conf": 0.17679241299629211
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 138,
@@ -11950,8 +11950,8 @@
         "conf": 0.17717432975769043
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 139,
@@ -12036,8 +12036,8 @@
         "conf": 0.17789599299430847
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 140,
@@ -12122,8 +12122,8 @@
         "conf": 0.17820145189762115
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 141,
@@ -12208,8 +12208,8 @@
         "conf": 0.1788744181394577
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 142,
@@ -12294,8 +12294,8 @@
         "conf": 0.1806294471025467
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 143,
@@ -12380,8 +12380,8 @@
         "conf": 0.17863237857818604
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 144,
@@ -12466,8 +12466,8 @@
         "conf": 0.1702449917793274
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 145,
@@ -12552,8 +12552,8 @@
         "conf": 0.1781582236289978
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 146,
@@ -12638,8 +12638,8 @@
         "conf": 0.1785578578710556
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 147,
@@ -12724,8 +12724,8 @@
         "conf": 0.17987853288650513
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 148,
@@ -12810,8 +12810,8 @@
         "conf": 0.1788334995508194
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 149,
@@ -12896,8 +12896,8 @@
         "conf": 0.18218044936656952
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 150,
@@ -12982,8 +12982,8 @@
         "conf": 0.18360012769699097
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 151,
@@ -13068,8 +13068,8 @@
         "conf": 0.18298666179180145
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 152,
@@ -13154,8 +13154,8 @@
         "conf": 0.18342071771621704
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 153,
@@ -13240,8 +13240,8 @@
         "conf": 0.18176311254501343
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 154,
@@ -13326,8 +13326,8 @@
         "conf": 0.1827283650636673
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 155,
@@ -13412,8 +13412,8 @@
         "conf": 0.18478865921497345
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 156,
@@ -13498,8 +13498,8 @@
         "conf": 0.1889013946056366
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 157,
@@ -13584,8 +13584,8 @@
         "conf": 0.18943731486797333
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 158,
@@ -13670,8 +13670,8 @@
         "conf": 0.18992099165916443
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 159,
@@ -13756,8 +13756,8 @@
         "conf": 0.1795470267534256
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 160,
@@ -13842,8 +13842,8 @@
         "conf": 0.17913351953029633
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 161,
@@ -13928,8 +13928,8 @@
         "conf": 0.1973813772201538
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 162,
@@ -14014,8 +14014,8 @@
         "conf": 0.19800513982772827
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 163,
@@ -14100,8 +14100,8 @@
         "conf": 0.195648193359375
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 164,
@@ -14186,8 +14186,8 @@
         "conf": 0.1949075162410736
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 165,
@@ -14272,8 +14272,8 @@
         "conf": 0.19666290283203125
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 166,
@@ -14358,8 +14358,8 @@
         "conf": 0.1986915022134781
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 167,
@@ -14444,8 +14444,8 @@
         "conf": 0.19940698146820068
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 168,
@@ -14530,8 +14530,8 @@
         "conf": 0.20306144654750824
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 169,
@@ -14616,8 +14616,8 @@
         "conf": 0.2037690430879593
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 170,
@@ -14702,8 +14702,8 @@
         "conf": 0.2035781890153885
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 171,
@@ -14788,8 +14788,8 @@
         "conf": 0.20239825546741486
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 172,
@@ -14874,8 +14874,8 @@
         "conf": 0.2021496295928955
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 173,
@@ -14960,8 +14960,8 @@
         "conf": 0.20518657565116882
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 174,
@@ -15046,8 +15046,8 @@
         "conf": 0.20557262003421783
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 175,
@@ -15132,8 +15132,8 @@
         "conf": 0.20891934633255005
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 176,
@@ -15218,8 +15218,8 @@
         "conf": 0.20985370874404907
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 177,
@@ -15304,8 +15304,8 @@
         "conf": 0.20252077281475067
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 178,
@@ -15390,8 +15390,8 @@
         "conf": 0.19858960807323456
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 179,
@@ -15476,8 +15476,8 @@
         "conf": 0.19389155507087708
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 180,
@@ -15562,8 +15562,8 @@
         "conf": 0.19525089859962463
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 181,
@@ -15648,8 +15648,8 @@
         "conf": 0.19384776055812836
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 182,
@@ -15734,8 +15734,8 @@
         "conf": 0.19324682652950287
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 183,
@@ -15820,8 +15820,8 @@
         "conf": 0.19068917632102966
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 184,
@@ -15906,8 +15906,8 @@
         "conf": 0.19462382793426514
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 185,
@@ -15992,8 +15992,8 @@
         "conf": 0.18830569088459015
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 186,
@@ -16078,8 +16078,8 @@
         "conf": 0.18743427097797394
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 187,
@@ -16164,8 +16164,8 @@
         "conf": 0.1850249469280243
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 188,
@@ -16250,8 +16250,8 @@
         "conf": 0.18414592742919922
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 189,
@@ -16336,8 +16336,8 @@
         "conf": 0.19016890227794647
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 190,
@@ -16422,8 +16422,8 @@
         "conf": 0.19569960236549377
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 191,
@@ -16508,8 +16508,8 @@
         "conf": 0.19227364659309387
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 192,
@@ -16594,8 +16594,8 @@
         "conf": 0.1981998085975647
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 193,
@@ -16680,8 +16680,8 @@
         "conf": 0.19937866926193237
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 194,
@@ -16766,8 +16766,8 @@
         "conf": 0.19981835782527924
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 195,
@@ -16852,8 +16852,8 @@
         "conf": 0.2018658071756363
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 196,
@@ -16938,8 +16938,8 @@
         "conf": 0.20356981456279755
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 197,
@@ -17024,8 +17024,8 @@
         "conf": 0.20761586725711823
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 198,
@@ -17110,8 +17110,8 @@
         "conf": 0.20762620866298676
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 199,
@@ -17196,8 +17196,8 @@
         "conf": 0.20809303224086761
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 200,
@@ -17282,8 +17282,8 @@
         "conf": 0.20808114111423492
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 201,
@@ -17368,8 +17368,8 @@
         "conf": 0.2071293145418167
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 202,
@@ -17454,8 +17454,8 @@
         "conf": 0.21164320409297943
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 203,
@@ -17540,8 +17540,8 @@
         "conf": 0.21453465521335602
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 204,
@@ -17626,8 +17626,8 @@
         "conf": 0.21010364592075348
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 205,
@@ -17712,8 +17712,8 @@
         "conf": 0.20958542823791504
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 206,
@@ -17798,8 +17798,8 @@
         "conf": 0.20986126363277435
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 207,
@@ -17884,8 +17884,8 @@
         "conf": 0.21279947459697723
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 208,
@@ -17970,8 +17970,8 @@
         "conf": 0.212884783744812
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 209,
@@ -18056,8 +18056,8 @@
         "conf": 0.21236930787563324
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 210,
@@ -18142,8 +18142,8 @@
         "conf": 0.21137210726737976
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 211,
@@ -18228,8 +18228,8 @@
         "conf": 0.21523551642894745
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 212,
@@ -18314,8 +18314,8 @@
         "conf": 0.2155793458223343
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 213,
@@ -18400,8 +18400,8 @@
         "conf": 0.22014577686786652
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 214,
@@ -18486,8 +18486,8 @@
         "conf": 0.22124339640140533
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 215,
@@ -18572,8 +18572,8 @@
         "conf": 0.21699422597885132
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 216,
@@ -18658,8 +18658,8 @@
         "conf": 0.21977335214614868
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 217,
@@ -18744,8 +18744,8 @@
         "conf": 0.216702401638031
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 218,
@@ -18830,8 +18830,8 @@
         "conf": 0.21705617010593414
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 219,
@@ -18916,8 +18916,8 @@
         "conf": 0.21967758238315582
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 220,
@@ -19002,8 +19002,8 @@
         "conf": 0.2177412062883377
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 221,
@@ -19088,8 +19088,8 @@
         "conf": 0.21784411370754242
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 222,
@@ -19174,8 +19174,8 @@
         "conf": 0.22338835895061493
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 223,
@@ -19260,8 +19260,8 @@
         "conf": 0.2332468181848526
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 224,
@@ -19346,8 +19346,8 @@
         "conf": 0.23265457153320312
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 225,
@@ -19432,8 +19432,8 @@
         "conf": 0.2336013913154602
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 226,
@@ -19518,8 +19518,8 @@
         "conf": 0.23700912296772003
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 227,
@@ -19604,8 +19604,8 @@
         "conf": 0.23806211352348328
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 228,
@@ -19690,8 +19690,8 @@
         "conf": 0.23597806692123413
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 229,
@@ -19776,8 +19776,8 @@
         "conf": 0.23493900895118713
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 230,
@@ -19862,8 +19862,8 @@
         "conf": 0.235774427652359
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 231,
@@ -19948,8 +19948,8 @@
         "conf": 0.23943494260311127
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 232,
@@ -20034,8 +20034,8 @@
         "conf": 0.23194509744644165
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 233,
@@ -20120,8 +20120,8 @@
         "conf": 0.2294456660747528
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 234,
@@ -20206,8 +20206,8 @@
         "conf": 0.22899436950683594
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 235,
@@ -20292,8 +20292,8 @@
         "conf": 0.22683919966220856
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 236,
@@ -20378,8 +20378,8 @@
         "conf": 0.22398166358470917
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 237,
@@ -20464,8 +20464,8 @@
         "conf": 0.22385485470294952
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 238,
@@ -20550,8 +20550,8 @@
         "conf": 0.22085297107696533
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 239,
@@ -20636,8 +20636,8 @@
         "conf": 0.2200951725244522
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 240,
@@ -20722,8 +20722,8 @@
         "conf": 0.2218313366174698
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 241,
@@ -20808,8 +20808,8 @@
         "conf": 0.224773570895195
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 242,
@@ -20894,8 +20894,8 @@
         "conf": 0.22445185482501984
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 243,
@@ -20980,8 +20980,8 @@
         "conf": 0.228155255317688
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 244,
@@ -21066,8 +21066,8 @@
         "conf": 0.22941657900810242
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 245,
@@ -21152,8 +21152,8 @@
         "conf": 0.23002462089061737
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 246,
@@ -21238,8 +21238,8 @@
         "conf": 0.23075644671916962
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 247,
@@ -21324,8 +21324,8 @@
         "conf": 0.2283220738172531
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 248,
@@ -21410,8 +21410,8 @@
         "conf": 0.2279704362154007
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 249,
@@ -21496,8 +21496,8 @@
         "conf": 0.22950991988182068
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 250,
@@ -21582,8 +21582,8 @@
         "conf": 0.23029538989067078
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 251,
@@ -21668,8 +21668,8 @@
         "conf": 0.2264571487903595
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 252,
@@ -21754,8 +21754,8 @@
         "conf": 0.22889329493045807
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 253,
@@ -21840,8 +21840,8 @@
         "conf": 0.2267264872789383
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 254,
@@ -21926,8 +21926,8 @@
         "conf": 0.22490684688091278
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 255,
@@ -22012,8 +22012,8 @@
         "conf": 0.22827669978141785
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 256,
@@ -22098,8 +22098,8 @@
         "conf": 0.22803771495819092
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 257,
@@ -22184,8 +22184,8 @@
         "conf": 0.23029540479183197
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 258,
@@ -22270,8 +22270,8 @@
         "conf": 0.23623035848140717
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 259,
@@ -22356,8 +22356,8 @@
         "conf": 0.24522389471530914
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 260,
@@ -22442,8 +22442,8 @@
         "conf": 0.24513573944568634
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 261,
@@ -22528,8 +22528,8 @@
         "conf": 0.2489618957042694
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 262,
@@ -22614,8 +22614,8 @@
         "conf": 0.25017204880714417
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 263,
@@ -22700,8 +22700,8 @@
         "conf": 0.2535897195339203
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 264,
@@ -22786,8 +22786,8 @@
         "conf": 0.25525593757629395
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 265,
@@ -22872,8 +22872,8 @@
         "conf": 0.2574070692062378
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 266,
@@ -22958,8 +22958,8 @@
         "conf": 0.2585132122039795
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 267,
@@ -23044,8 +23044,8 @@
         "conf": 0.2675991356372833
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 268,
@@ -23130,8 +23130,8 @@
         "conf": 0.27696025371551514
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 269,
@@ -23216,8 +23216,8 @@
         "conf": 0.27164536714553833
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 270,
@@ -23302,8 +23302,8 @@
         "conf": 0.2789398431777954
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 271,
@@ -23388,8 +23388,8 @@
         "conf": 0.23527461290359497
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 272,
@@ -23474,8 +23474,8 @@
         "conf": 0.23620560765266418
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 273,
@@ -23560,8 +23560,8 @@
         "conf": 0.24336357414722443
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 274,
@@ -23646,8 +23646,8 @@
         "conf": 0.2607426345348358
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 275,
@@ -23732,8 +23732,8 @@
         "conf": 0.2862762212753296
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 276,
@@ -23818,8 +23818,8 @@
         "conf": 0.3091161251068115
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 277,
@@ -23904,8 +23904,8 @@
         "conf": 0.3234761357307434
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 278,
@@ -23990,8 +23990,8 @@
         "conf": 0.32406651973724365
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 279,
@@ -24076,8 +24076,8 @@
         "conf": 0.3768998086452484
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 280,
@@ -24162,8 +24162,8 @@
         "conf": 0.4135490655899048
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 281,
@@ -24248,8 +24248,8 @@
         "conf": 0.4488093852996826
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 282,
@@ -24334,8 +24334,8 @@
         "conf": 0.46839773654937744
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 283,
@@ -24420,8 +24420,8 @@
         "conf": 0.4851677119731903
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 284,
@@ -24506,8 +24506,8 @@
         "conf": 0.4815123677253723
       }
     ],
-    "n_used": 4,
-    "H_solved": true
+    "n_used": 3,
+    "H_solved": false
   },
   {
     "frame": 285,
@@ -24592,7 +24592,7 @@
         "conf": 0.685219943523407
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -24678,7 +24678,7 @@
         "conf": 0.7232460379600525
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -24764,7 +24764,7 @@
         "conf": 0.7269059419631958
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -24850,7 +24850,7 @@
         "conf": 0.7201551198959351
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -24936,7 +24936,7 @@
         "conf": 0.7205895781517029
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -25022,7 +25022,7 @@
         "conf": 0.7205422520637512
       }
     ],
-    "n_used": 6,
+    "n_used": 5,
     "H_solved": true
   },
   {
@@ -25108,7 +25108,7 @@
         "conf": 0.7484304904937744
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25194,7 +25194,7 @@
         "conf": 0.760434091091156
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25280,7 +25280,7 @@
         "conf": 0.7864545583724976
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25366,7 +25366,7 @@
         "conf": 0.8003572225570679
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25452,7 +25452,7 @@
         "conf": 0.8047515749931335
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25538,7 +25538,7 @@
         "conf": 0.8045191764831543
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25624,7 +25624,7 @@
         "conf": 0.8035637736320496
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25710,7 +25710,7 @@
         "conf": 0.8098446130752563
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25796,7 +25796,7 @@
         "conf": 0.8192940354347229
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25882,7 +25882,7 @@
         "conf": 0.8122591376304626
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -25968,7 +25968,7 @@
         "conf": 0.8128244280815125
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26054,7 +26054,7 @@
         "conf": 0.812574565410614
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26140,7 +26140,7 @@
         "conf": 0.8049705624580383
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26226,7 +26226,7 @@
         "conf": 0.8076435327529907
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26312,7 +26312,7 @@
         "conf": 0.8135808706283569
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26398,7 +26398,7 @@
         "conf": 0.818633496761322
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26484,7 +26484,7 @@
         "conf": 0.8263576030731201
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26570,7 +26570,7 @@
         "conf": 0.8234847187995911
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26656,7 +26656,7 @@
         "conf": 0.8253414034843445
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26742,7 +26742,7 @@
         "conf": 0.8276081681251526
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26828,7 +26828,7 @@
         "conf": 0.8220938444137573
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -26914,7 +26914,7 @@
         "conf": 0.8260588645935059
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27000,7 +27000,7 @@
         "conf": 0.8335649371147156
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27086,7 +27086,7 @@
         "conf": 0.8334276080131531
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27172,7 +27172,7 @@
         "conf": 0.8329412341117859
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27258,7 +27258,7 @@
         "conf": 0.8401358723640442
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27344,7 +27344,7 @@
         "conf": 0.8442916870117188
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27430,7 +27430,7 @@
         "conf": 0.8442375063896179
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27516,7 +27516,7 @@
         "conf": 0.8512090444564819
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27602,7 +27602,7 @@
         "conf": 0.8493276834487915
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27688,7 +27688,7 @@
         "conf": 0.849951982498169
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27774,7 +27774,7 @@
         "conf": 0.8452555537223816
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27860,7 +27860,7 @@
         "conf": 0.8547474145889282
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -27946,7 +27946,7 @@
         "conf": 0.8782712817192078
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -28032,7 +28032,7 @@
         "conf": 0.8863758444786072
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -28118,7 +28118,7 @@
         "conf": 0.8866196274757385
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -28204,7 +28204,7 @@
         "conf": 0.8927880525588989
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -28290,7 +28290,7 @@
         "conf": 0.8851668238639832
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -28376,7 +28376,7 @@
         "conf": 0.8890583515167236
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -28462,7 +28462,7 @@
         "conf": 0.8919479250907898
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -31129,7 +31129,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 362,
@@ -31215,7 +31215,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 363,
@@ -31301,7 +31301,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 364,
@@ -31387,7 +31387,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 365,
@@ -31473,7 +31473,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 366,
@@ -31559,7 +31559,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 367,
@@ -31645,7 +31645,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 368,
@@ -31731,7 +31731,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 369,
@@ -31817,7 +31817,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 370,
@@ -31903,7 +31903,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 371,
@@ -31989,7 +31989,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 372,
@@ -32075,7 +32075,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 373,
@@ -32161,7 +32161,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 374,
@@ -32247,7 +32247,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 375,
@@ -32333,7 +32333,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 376,
@@ -32419,7 +32419,7 @@
       }
     ],
     "n_used": 5,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 377,
@@ -32505,7 +32505,7 @@
       }
     ],
     "n_used": 6,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 378,
@@ -32591,7 +32591,7 @@
       }
     ],
     "n_used": 6,
-    "H_solved": false
+    "H_solved": true
   },
   {
     "frame": 379,
@@ -33622,7 +33622,7 @@
         "conf": 0.929332435131073
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -33708,7 +33708,7 @@
         "conf": 0.9018523693084717
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -33794,7 +33794,7 @@
         "conf": 0.9019755721092224
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -34138,7 +34138,7 @@
         "conf": 0.6359099745750427
       }
     ],
-    "n_used": 5,
+    "n_used": 4,
     "H_solved": true
   },
   {
@@ -34224,7 +34224,7 @@
         "conf": 0.8559708595275879
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -34310,7 +34310,7 @@
         "conf": 0.8564703464508057
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -36632,7 +36632,7 @@
         "conf": 0.7939302325248718
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -38954,7 +38954,7 @@
         "conf": 0.8259950280189514
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -39040,7 +39040,7 @@
         "conf": 0.8216403722763062
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -39126,7 +39126,7 @@
         "conf": 0.8248335719108582
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -39212,7 +39212,7 @@
         "conf": 0.8232938647270203
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -39556,7 +39556,7 @@
         "conf": 0.8243592381477356
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {
@@ -39728,7 +39728,7 @@
         "conf": 0.8256199955940247
       }
     ],
-    "n_used": 7,
+    "n_used": 6,
     "H_solved": true
   },
   {

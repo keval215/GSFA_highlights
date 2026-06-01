@@ -16,7 +16,15 @@
       "Bash(paddle/Scripts/python.exe scripts/crop_scoreboard.py --image data/images/image.png)",
       "Bash(paddle/Scripts/python.exe video_highlight/ocr_test.py --input data/images/image.png)",
       "Bash(paddle/Scripts/python.exe -c ' *)",
-      "Bash(paddle/Scripts/python.exe scripts/test_endgame_ocr.py)"
+      "Bash(paddle/Scripts/python.exe scripts/test_endgame_ocr.py)",
+      "PowerShell(& \"D:\\\\GSFA_highlights\\\\highlights\\\\Scripts\\\\python.exe\" \"D:\\\\GSFA_highlights\\\\video_analysis\\\\inspect_log2.py\")",
+      "PowerShell(New-Item *)",
+      "Bash(highlights/Scripts/python.exe *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\GSFA_highlights\" -Force)",
+      "Bash(Select-Object Name, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(Get-ChildItem -Path \"D:\\\\GSFA_highlights\\\\data\" -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)"
     ]
   }
 }

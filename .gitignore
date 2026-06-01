@@ -55,6 +55,8 @@ clips/
 highlights/
 paddle/
 docs/
+graphify-out/
+
 # Translations
 *.mo
 *.pot

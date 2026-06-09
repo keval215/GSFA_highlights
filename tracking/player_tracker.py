@@ -1,12 +1,14 @@
 """
-tracking/player_tracker.py — Phase 1 player tracking for GSFA highlights.
+tracking/player_tracker.py — Player tracking for GSFA highlights.
 
-Wraps deep-sort-realtime's DeepSort with externally-supplied SigLIP
-appearance embeddings (already computed by GSFATeamClassifier — no second
-forward pass). Writes Detection.track_id in-place on each player.
+BoT-SORT (boxmot) with:
+  • Built-in ECC global motion compensation — survives fast camera pans
+  • External SigLIP appearance embeddings (reused from GSFATeamClassifier)
+  • Two-stage ByteTrack association (high-conf then low-conf)
 
-Detections without an embedding (crops too small to embed) are skipped;
-they keep track_id=None.
+Writes track_id in-place on each Detection. Detections without an
+embedding are still tracked (motion-only association), but ID stability
+across pans relies on having an embedding for those that do.
 """
 
 from __future__ import annotations
@@ -14,79 +16,74 @@ from __future__ import annotations
 from typing import List
 
 import numpy as np
-from deep_sort_realtime.deepsort_tracker import DeepSort
+from boxmot.trackers.bbox.botsort.botsort import BotSort
 
 from detectors.player_detector import Detection
 
 
-def _iou(a: tuple[int, int, int, int], b: tuple[float, float, float, float]) -> float:
-    ax1, ay1, ax2, ay2 = a
-    bx1, by1, bx2, by2 = b
-    ix1 = max(ax1, bx1); iy1 = max(ay1, by1)
-    ix2 = min(ax2, bx2); iy2 = min(ay2, by2)
-    iw = max(0.0, ix2 - ix1); ih = max(0.0, iy2 - iy1)
-    inter = iw * ih
-    if inter <= 0:
-        return 0.0
-    area_a = max(0, ax2 - ax1) * max(0, ay2 - ay1)
-    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
-    union = area_a + area_b - inter
-    return inter / union if union > 0 else 0.0
+# Track buffer is scaled internally by frame_rate/30 — we want lost tracks
+# kept alive for ~2 seconds, which covers a typical pass duration but
+# stops well short of long ReID territory.
+_TRACK_BUFFER_FRAMES_AT_30FPS = 60
 
 
 class PlayerTracker:
-    """DeepSORT wrapper that reuses SigLIP embeddings written onto Detection."""
+    """BoT-SORT wrapper that consumes external SigLIP embeddings."""
 
-    def __init__(self, fps: float):
-        # Short max_age — futsal direction changes make stale Kalman predictions
-        # risky. Lean on appearance instead via tight max_cosine_distance.
-        self.ds = DeepSort(
-            max_age=max(1, int(0.5 * fps)),
-            n_init=2,
-            max_iou_distance=0.7,
-            max_cosine_distance=0.2,
-            nn_budget=30,
-            embedder=None,   # we supply external SigLIP embeds
+    def __init__(self, fps: float) -> None:
+        self.tracker = BotSort(
+            reid_model         = None,
+            with_reid          = True,
+            cmc_method         = "ecc",
+            track_high_thresh  = 0.5,
+            track_low_thresh   = 0.1,
+            new_track_thresh   = 0.6,
+            match_thresh       = 0.8,
+            proximity_thresh   = 0.5,
+            appearance_thresh  = 0.25,
+            track_buffer       = _TRACK_BUFFER_FRAMES_AT_30FPS,
+            frame_rate         = int(round(fps)),
+            fuse_first_associate = False,
         )
 
     def update(self, frame: np.ndarray, players: List[Detection]) -> None:
-        """Assign track_id to each player in-place. Players without an
-        embedding are skipped (track_id stays None)."""
-        tracked = [p for p in players if p.embedding is not None]
-        if not tracked:
-            # Still need to tick the tracker so max_age accounting advances.
-            self.ds.update_tracks([], embeds=None, frame=frame)
+        """Run the tracker on one frame's player detections.
+
+        Writes track_id onto each Detection in-place. Detections whose
+        SigLIP embedding is missing are still tracked (motion-only) but
+        will have weaker appearance-based recovery.
+        """
+        if not players:
+            self.tracker.update(np.empty((0, 6), dtype=np.float32), frame)
             return
 
-        raw_dets = []
-        for p in tracked:
-            x1, y1, x2, y2 = p.bbox
-            raw_dets.append(
-                ([float(x1), float(y1), float(x2 - x1), float(y2 - y1)],
-                 float(p.confidence),
-                 str(p.team_id) if p.team_id is not None else "?")
-            )
-        embeds = np.stack([p.embedding for p in tracked]).astype(np.float32)
+        # Build Nx6 dets array: x1, y1, x2, y2, conf, cls
+        dets = np.array(
+            [[*p.bbox, p.confidence, 0] for p in players],
+            dtype=np.float32,
+        )
 
-        tracks = self.ds.update_tracks(raw_dets, embeds=embeds, frame=frame)
+        emb_dim = None
+        for p in players:
+            if p.embedding is not None:
+                emb_dim = int(p.embedding.shape[0])
+                break
 
-        # Map confirmed tracks back to input detections via IoU.
-        confirmed = [t for t in tracks if t.is_confirmed()]
-        if not confirmed:
+        if emb_dim is None:
+            embs = None
+        else:
+            embs = np.zeros((len(players), emb_dim), dtype=np.float32)
+            for i, p in enumerate(players):
+                if p.embedding is not None:
+                    embs[i] = p.embedding.astype(np.float32)
+
+        out = self.tracker.update(dets, frame, embs=embs)
+        out_arr = np.asarray(out)
+        if out_arr.size == 0:
             return
 
-        used = set()
-        for t in confirmed:
-            l, t_, r, b = t.to_ltrb()
-            best_iou = 0.3   # minimum overlap to accept the mapping
-            best_idx = -1
-            for i, p in enumerate(tracked):
-                if i in used:
-                    continue
-                score = _iou(p.bbox, (l, t_, r, b))
-                if score > best_iou:
-                    best_iou = score
-                    best_idx = i
-            if best_idx >= 0:
-                tracked[best_idx].track_id = int(t.track_id)
-                used.add(best_idx)
+        # boxmot rows: x1, y1, x2, y2, id, conf, cls, det_ind
+        for row in out_arr:
+            det_ind = int(row[7])
+            if 0 <= det_ind < len(players):
+                players[det_ind].track_id = int(row[4])

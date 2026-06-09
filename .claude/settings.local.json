@@ -24,7 +24,18 @@
       "Bash(Select-Object Name, PSIsContainer)",
       "Bash(Format-Table -AutoSize)",
       "Bash(Get-ChildItem -Path \"D:\\\\GSFA_highlights\\\\data\" -Directory)",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "WebSearch",
+      "WebFetch(domain:getstream.io)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:pmc.ncbi.nlm.nih.gov)",
+      "WebFetch(domain:zzsi.github.io)",
+      "Bash(D:/GSFA_highlights/highlights/Scripts/python.exe -c \"import boxmot; print\\(boxmot.__version__\\)\")",
+      "Bash(D:/GSFA_highlights/highlights/Scripts/python.exe -c \"import filterpy; print\\(filterpy.__version__\\)\")",
+      "Bash(D:/GSFA_highlights/highlights/Scripts/python.exe -c \"import cv2; print\\('cv2', cv2.__version__\\)\")",
+      "Bash(D:/GSFA_highlights/highlights/Scripts/python.exe *)",
+      "Bash(dir D:\\\\GSFA_highlights\\\\highlights\\\\Lib\\\\site-packages\\\\boxmot)",
+      "Bash(findstr /R \"[a-z]\")"
     ]
   }
 }

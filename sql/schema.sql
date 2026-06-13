@@ -6,10 +6,8 @@
 
 CREATE TABLE matches (
   match_id              NVARCHAR(64)  NOT NULL PRIMARY KEY,
-  venue_id              NVARCHAR(64)  NULL,
   team0_name            NVARCHAR(128) NULL,
   team1_name            NVARCHAR(128) NULL,
-  team_fit_status       NVARCHAR(16)  NOT NULL DEFAULT 'pending',  -- pending|ok|refit|failed
   last_half_processed   TINYINT       NOT NULL DEFAULT 1,
   last_minute_processed INT           NOT NULL DEFAULT 0,
   created_at            DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),

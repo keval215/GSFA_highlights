@@ -1,11 +1,17 @@
 ---
-name: Team Classifier Architecture Decision
-description: Why the GSFA pipeline uses HSV torso histograms instead of SigLIP+UMAP for team classification
+name: team-classifier-architecture
+description: Which team classifier is active in the main pipeline and why the architecture evolved
 type: project
 ---
 
-The original team classifier (02_team_classification.py) used SigLIP + UMAP + KMeans on full player bounding box crops. This caused spatial clustering (on-court vs bench) instead of jersey-color clustering because SigLIP encoded background context (bleachers, court surface) rather than jersey features.
+The main pipeline (video_analysis/possession.py, branch `test`) uses **GSFATeamClassifier** — SigLIP (768-D) + UMAP (→3-D) + KMeans(k=2) — NOT ColourHistogramTeamClassifier.
 
-**Why:** Camera is PANNING (not fixed), so court-polygon spatial filters cannot correct for it. Full-box SigLIP embeddings are background-contaminated on a panning camera.
+The key fix vs the naive SigLIP approach was switching the crop to the **top 55% of the player bbox** (TORSO_RATIO=0.55) and adding a **blur filter** (Laplacian variance > 80). These two changes remove background contamination and blurry crops that were causing spatial clustering instead of jersey-colour clustering on the panning futsal camera.
 
-**How to apply:** The fix is torso-only HSV histogram features (TORSO_TOP_FRAC=0.25, TORSO_BOT_FRAC=0.65, TORSO_LR_FRAC=0.15) fed directly into KMeans (k=2). No UMAP, no SigLIP, no GPU required. TeamClassifier class keeps same fit()/predict() interface for drop-in compatibility. The roboflow sports/common/team.py reference implementation uses the same broken SigLIP approach — we intentionally diverge from it on this project.
+The ColourHistogramTeamClassifier (HSV h=64bins + s=32bins, KMeans directly) exists in team_classifier/colour_histogram.py as a drop-in alternative but is not wired into possession.py. An earlier project memory described it as the "fix" — that was an intermediate state. The current production path is GSFATeamClassifier.
+
+**Why:** SigLIP embeddings are richer than HSV histograms and enable the PlayerTracker (BoT-SORT) to also consume the 768-D feature for ReID. The torso crop + blur gate is sufficient to remove the background contamination that originally broke SigLIP on this panning camera.
+
+**How to apply:** Always wire GSFATeamClassifier in possession.py and any future pipeline scripts. Never swap in ColourHistogramTeamClassifier without flagging it to the user. The pkl cache is at data/cache/<video_stem>_team_siglip.pkl.
+
+See also: [[user-team-classifier-rule]]

@@ -1,0 +1,26 @@
+# Service-layer dependencies (Docker image). torch/torchvision are installed
+# separately in the Dockerfile from the cu124 index.
+
+# CV pipeline
+opencv-python-headless
+ultralytics
+supervision
+rfdetr
+boxmot
+joblib
+umap-learn
+scikit-learn
+Pillow
+transformers
+sentencepiece
+more-itertools
+git+https://github.com/roboflow/sports.git
+
+# Service
+fastapi
+uvicorn[standard]
+python-multipart
+azure-storage-blob
+azure-storage-queue
+pyodbc
+requests

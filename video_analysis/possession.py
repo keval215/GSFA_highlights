@@ -37,7 +37,7 @@ from tracking.player_tracker import PlayerTracker
 # ---------------------------------------------------------------------------
 
 BALL_MODEL_WEIGHTS = r"C:\Users\Admin\OneDrive\Desktop\CZ\gsfa_ball_detection.pth"
-VIDEO_PATH         = r"C:\Users\Admin\Downloads\Video Project 8.mp4"
+VIDEO_PATH         = r"C:\Users\Admin\Downloads\Video Project_1min.mp4"
 OUTPUT_PATH        = r"data/output/possession_output.mp4"
 
 BALL_CLASS_ID  = 1
@@ -61,7 +61,7 @@ TRAVEL_TIMEOUT_FRAMES = 22  # processed frames (~1.47 s)
 
 # Debug / speed run
 TARGET_PROCESS_FPS   = 15.0        # analyse every Nth frame
-PROCESS_DURATION_SEC = 9.0         # stop after this many seconds
+PROCESS_DURATION_SEC = 60       # stop after this many seconds
 
 # Visuals
 POSSESS_BAR_H   = 42
@@ -73,7 +73,6 @@ REF_BGR   = (80, 220, 80)
 # Possession labels surfaced to stats
 POSSESS_TEAM0     = "team0"
 POSSESS_TEAM1     = "team1"
-POSSESS_CONTESTED = "contested"
 POSSESS_LOOSE     = "loose"
 POSSESS_OOF       = "oof"
 
@@ -243,7 +242,7 @@ class BallTracker:
 
 @dataclass
 class CarrierState:
-    kind:     str                    # "carrier" | "loose" | "contested" | "oof"
+    kind:     str                    # "carrier" | "loose" | "oof"
     track_id: Optional[int] = None
     team_id:  Optional[int] = None
     player:   Optional[Detection] = None
@@ -268,9 +267,8 @@ class CarrierEngine:
     is committed only after N consecutive matching raw samples.
     """
 
-    OOF_STATE       = CarrierState(kind="oof")
-    LOOSE_STATE     = CarrierState(kind="loose")
-    CONTESTED_STATE = CarrierState(kind="contested")
+    OOF_STATE   = CarrierState(kind="oof")
+    LOOSE_STATE = CarrierState(kind="loose")
 
     def __init__(self, hysteresis_n: int = CARRIER_HYSTERESIS_N) -> None:
         self.hysteresis_n = hysteresis_n
@@ -325,7 +323,7 @@ class CarrierEngine:
         in_zone.sort(key=lambda x: x[0])
         teams = {p.team_id for _, p in in_zone}
         if len(teams) > 1:
-            return self.CONTESTED_STATE
+            return self.LOOSE_STATE
 
         d, p = in_zone[0]
         return CarrierState(
@@ -342,7 +340,6 @@ class CarrierEngine:
 
 EVT_COMPLETED      = "completed"
 EVT_INTERCEPTION   = "interception"
-EVT_DRIBBLE_CANCEL = "dribble_cancel"
 EVT_BALL_LOST      = "ball_lost"
 # EVT_SHOT placeholder — no shot detector wired in yet.
 
@@ -404,8 +401,8 @@ class PassEventTracker:
 
         self.events: list[PassEvent] = []
         self.stats_internal: dict[int, dict[str, int]] = {
-            0: {EVT_COMPLETED: 0, EVT_INTERCEPTION: 0, EVT_DRIBBLE_CANCEL: 0, EVT_BALL_LOST: 0},
-            1: {EVT_COMPLETED: 0, EVT_INTERCEPTION: 0, EVT_DRIBBLE_CANCEL: 0, EVT_BALL_LOST: 0},
+            0: {EVT_COMPLETED: 0, EVT_INTERCEPTION: 0, EVT_BALL_LOST: 0},
+            1: {EVT_COMPLETED: 0, EVT_INTERCEPTION: 0, EVT_BALL_LOST: 0},
         }
 
     # ------------------------------------------------------------------
@@ -422,7 +419,7 @@ class PassEventTracker:
         Returns:
           (possession_label, adjustments)
             possession_label: one of POSSESS_TEAM{0,1} | POSSESS_LOOSE
-                              | POSSESS_CONTESTED | POSSESS_OOF
+                              | POSSESS_OOF
             adjustments     : list of (kind, team_id, frame_count) that
                               PossessionStats should retroactively apply.
                               kind ∈ {"flip_to", "drop"}.
@@ -466,8 +463,10 @@ class PassEventTracker:
             assert self._passer is not None
             dt = f - self._cand_release_at
             if carrier.kind == "carrier" and carrier.track_id == self._passer[0]:
-                # Touch came straight back — dribble, cancel candidate release.
-                self._cancel_to_possession(f, adjustments)
+                # Touch came straight back — passer keeps the ball.
+                self.phase     = PHASE_POSS
+                self._receiver = None
+                self._reset_travel()
                 return
             if dt >= self.release_sustain:
                 # Release confirmed.
@@ -485,14 +484,16 @@ class PassEventTracker:
 
             if carrier.kind == "carrier":
                 if carrier.track_id == self._passer[0]:
-                    # Ball came back to passer — dribble / failed touch.
-                    self._cancel_to_possession(f, adjustments)
+                    # Ball came back to passer — keeps possession.
+                    self.phase     = PHASE_POSS
+                    self._receiver = None
+                    self._reset_travel()
                     return
                 if travel_dt >= self.travel_min_gap:
                     # Candidate reception by a new player.
                     self._enter_cand_reception(carrier, f)
                 return
-            # carrier.kind in (loose, contested, oof) — stay in travel.
+            # carrier.kind in (loose, oof) — stay in travel.
             return
 
         if self.phase == PHASE_CAND_RCV:
@@ -537,29 +538,6 @@ class PassEventTracker:
         self.phase = PHASE_CAND_RCV
         self._receiver = (carrier.track_id, carrier.team_id)
         self._cand_reception_at = f
-
-    def _cancel_to_possession(
-        self, f: int, adjustments: list[tuple[str, int, int]],
-    ) -> None:
-        # Dribble cancel — passer keeps the ball. Provisional credit was to
-        # the passer's team, which is the same team that still holds, so no
-        # adjustment needed.
-        assert self._passer is not None
-        self.events.append(PassEvent(
-            kind          = EVT_DRIBBLE_CANCEL,
-            from_track_id = self._passer[0],
-            from_team_id  = self._passer[1],
-            to_track_id   = None,
-            to_team_id    = None,
-            release_frame = self._cand_release_at,
-            end_frame     = f,
-            travel_frames = self._travel_frames_so_far,
-        ))
-        self.stats_internal[self._passer[1]][EVT_DRIBBLE_CANCEL] += 1
-        # Stay with the same passer.
-        self.phase = PHASE_POSS
-        self._receiver = None
-        self._reset_travel()
 
     def _resolve_ball_lost(
         self, f: int, adjustments: list[tuple[str, int, int]],
@@ -640,8 +618,6 @@ class PassEventTracker:
             if team == 1:
                 return POSSESS_TEAM1
             # Falls through if passer somehow None.
-        if carrier.kind == "contested":
-            return POSSESS_CONTESTED
         if carrier.kind == "loose":
             return POSSESS_LOOSE
         return POSSESS_OOF
@@ -654,7 +630,7 @@ class PassEventTracker:
         """Maps the rich internal schema to the legacy schema used by overlays:
             completed   -> successful
             interception-> inaccurate (counted on the passer's team)
-            dribble_cancel, ball_lost -> ignored
+            ball_lost   -> ignored
         """
         out: dict[int, dict[str, int]] = {
             0: {"successful": 0, "inaccurate": 0},
@@ -679,7 +655,6 @@ class PassEventTracker:
             lines.append(
                 f"    [internal: completed={internal[EVT_COMPLETED]} "
                 f"intercepted={internal[EVT_INTERCEPTION]} "
-                f"dribble={internal[EVT_DRIBBLE_CANCEL]} "
                 f"lost={internal[EVT_BALL_LOST]}]"
             )
         return "\n".join(lines)
@@ -691,7 +666,7 @@ class PassEventTracker:
 
 class PossessionStats:
     """Counts in-play frames per outcome and exposes possession % over only
-    the confirmed-team frames (loose / contested / OOF are excluded).
+    the confirmed-team frames (loose / OOF are excluded).
 
     Provisional team credit accumulated during travel is corrected via
     `apply_adjustments` when the pass FSM resolves the event:
@@ -701,11 +676,10 @@ class PossessionStats:
 
     def __init__(self) -> None:
         self.frame_counts: dict[str, int] = {
-            POSSESS_TEAM0:     0,
-            POSSESS_TEAM1:     0,
-            POSSESS_CONTESTED: 0,
-            POSSESS_LOOSE:     0,
-            POSSESS_OOF:       0,
+            POSSESS_TEAM0: 0,
+            POSSESS_TEAM1: 0,
+            POSSESS_LOOSE: 0,
+            POSSESS_OOF:   0,
         }
         self.total = 0
 
@@ -741,12 +715,11 @@ class PossessionStats:
         t0, t1 = self.percentages()
         d = max(1, self.total)
         return "\n".join([
-            "--- Possession Summary (denominator excludes loose/contested/OOF) ---",
-            f"  Team 0   : {t0:.1f}%",
-            f"  Team 1   : {t1:.1f}%",
-            f"  Contested: {100*self.frame_counts[POSSESS_CONTESTED]/d:.1f}%",
-            f"  Loose    : {100*self.frame_counts[POSSESS_LOOSE]/d:.1f}%",
-            f"  OOF      : {100*self.frame_counts[POSSESS_OOF]/d:.1f}%",
+            "--- Possession Summary (denominator excludes loose/OOF) ---",
+            f"  Team 0: {t0:.1f}%",
+            f"  Team 1: {t1:.1f}%",
+            f"  Loose : {100*self.frame_counts[POSSESS_LOOSE]/d:.1f}%",
+            f"  OOF   : {100*self.frame_counts[POSSESS_OOF]/d:.1f}%",
         ])
 
 
@@ -971,12 +944,6 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH) -> None:
                 print(
                     f"[{t_evt:.2f}s] INTERCEPTED       "
                     f"T{evt.from_team_id}#{evt.from_track_id} → T{evt.to_team_id}#{evt.to_track_id}  "
-                    f"travel={evt.travel_frames}f"
-                )
-            elif evt.kind == EVT_DRIBBLE_CANCEL:
-                print(
-                    f"[{t_evt:.2f}s] DRIBBLE CANCEL    "
-                    f"T{evt.from_team_id}#{evt.from_track_id} kept ball  "
                     f"travel={evt.travel_frames}f"
                 )
             elif evt.kind == EVT_BALL_LOST:

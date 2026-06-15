@@ -29,9 +29,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Bootstrap pip for the deadsnakes interpreter (no python3-pip — that targets 3.10).
-RUN python3.11 -m ensurepip --upgrade \
-    && python3.11 -m pip install --no-cache-dir --upgrade pip
+# Isolated venv: a venv excludes /usr/lib/python3/dist-packages, so deadsnakes
+# 3.11 never picks up Ubuntu's apt python3.10 packages (e.g. a cryptography
+# built for 3.10 that crashes azure-storage-blob with "No module named
+# _cffi_backend"). All subsequent pip installs land in the venv.
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN python3.11 -m pip install --no-cache-dir --upgrade pip
 
 # Torch first (large layer, changes rarely), then the rest.
 RUN python3.11 -m pip install --no-cache-dir \

@@ -189,6 +189,9 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    # The Azure SDK's HTTP logging policy logs every request/response at INFO,
+    # which floods the log on each 2 s queue poll and buries our own logs.
+    logging.getLogger("azure").setLevel(logging.WARNING)
     Worker().run_forever()
 
 

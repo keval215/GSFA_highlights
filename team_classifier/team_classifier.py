@@ -283,6 +283,47 @@ class GSFATeamClassifier:
             detections.players[det_idx].team_id   = int(team_ids[list_pos])
             detections.players[det_idx].embedding = features[list_pos].astype(np.float32)
 
+    def classify_batch(
+        self,
+        frames:          list[np.ndarray],
+        detections_list: list["FrameDetections"],
+    ) -> None:
+        """Batched form of classify(): embed the player crops from MANY frames
+        in one SigLIP pass, then scatter team_id + embedding back onto each
+        Detection. Result is identical to calling classify() per frame (same
+        crops, same reducer, same KMeans) — only fewer, larger GPU calls.
+
+        frames[i] is the BGR frame that detections_list[i] came from.
+        """
+        if not self._is_fitted:
+            raise RuntimeError(
+                "GSFATeamClassifier is not fitted. "
+                "Call fit_from_video_or_load() first."
+            )
+
+        # One flat crop list across all frames, with a parallel index map back
+        # to (frame position, detection index). Same crop filters as classify().
+        crops: list[np.ndarray] = []
+        index_map: list[tuple[int, int]] = []
+        for fpos, dets in enumerate(detections_list):
+            frame = frames[fpos]
+            for det_idx, p in enumerate(dets.players):
+                crop = self._torso_crop(frame, p.bbox)
+                if crop.shape[0] >= MIN_CROP_PX and crop.shape[1] >= MIN_CROP_PX:
+                    crops.append(crop)
+                    index_map.append((fpos, det_idx))
+
+        if not crops:
+            return
+
+        features    = self._classifier.extract_features(crops)        # (N, 768)
+        projections = self._classifier.reducer.transform(features)
+        team_ids    = self._classifier.cluster_model.predict(projections)
+
+        for list_pos, (fpos, det_idx) in enumerate(index_map):
+            detections_list[fpos].players[det_idx].team_id   = int(team_ids[list_pos])
+            detections_list[fpos].players[det_idx].embedding = features[list_pos].astype(np.float32)
+
     # ------------------------------------------------------------------
     # Colour → team-name resolution (called ONCE per match, at fit time)
     # ------------------------------------------------------------------

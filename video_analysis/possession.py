@@ -23,6 +23,7 @@ from typing import Optional
 import cv2
 import numpy as np
 import supervision as sv
+import torch
 from PIL import Image as PILImage
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -97,12 +98,17 @@ class BallDetector:
         from rfdetr import RFDETRMedium
         print(f"[BallDetector] Loading: {weights}")
         self.model = RFDETRMedium.from_checkpoint(weights, num_classes=2, resolution=576)
+        # Fuse/compile the graph for inference; no-op on backends where it is
+        # unsupported. Benefits both the service and the local pipeline.
+        try:
+            self.model.optimize_for_inference()
+        except Exception as exc:  # pragma: no cover - backend dependent
+            print(f"[BallDetector] optimize_for_inference skipped: {exc}")
         self.ball_class_id = ball_class_id
         self.conf          = conf
 
-    def detect(self, frame: np.ndarray) -> Optional[BallDetection]:
-        pil  = PILImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        dets = self.model.predict(pil, threshold=self.conf)
+    def _parse_dets(self, dets) -> Optional[BallDetection]:
+        """Pick the highest-confidence ball detection from an sv.Detections."""
         if dets is None or len(dets) == 0:
             return None
         mask = dets.class_id == self.ball_class_id
@@ -117,6 +123,28 @@ class BallDetector:
             centre     = ((x1 + x2) // 2, (y1 + y2) // 2),
             confidence = float(confs[best]),
         )
+
+    def detect(self, frame: np.ndarray) -> Optional[BallDetection]:
+        pil  = PILImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        with torch.inference_mode():
+            dets = self.model.predict(pil, threshold=self.conf)
+        return self._parse_dets(dets)
+
+    def detect_batch(self, frames: list[np.ndarray]) -> list[Optional[BallDetection]]:
+        """Detect the ball in a list of BGR frames. Tries a single batched
+        predict; falls back to a per-frame loop if the installed rfdetr does
+        not accept list input. Output is identical to per-frame detect()."""
+        if not frames:
+            return []
+        pils = [PILImage.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)) for f in frames]
+        with torch.inference_mode():
+            try:
+                out = self.model.predict(pils, threshold=self.conf)
+                if not isinstance(out, (list, tuple)):
+                    raise TypeError("rfdetr predict did not return a per-image list")
+            except Exception:
+                out = [self.model.predict(p, threshold=self.conf) for p in pils]
+        return [self._parse_dets(d) for d in out]
 
 
 class BallTracker:

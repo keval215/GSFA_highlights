@@ -30,11 +30,11 @@ _TRACK_BUFFER_FRAMES_AT_30FPS = 60
 class PlayerTracker:
     """BoT-SORT wrapper that consumes external SigLIP embeddings."""
 
-    def __init__(self, fps: float) -> None:
+    def __init__(self, fps: float, cmc_method: str = "ecc") -> None:
         self.tracker = BotSort(
             reid_model         = None,
             with_reid          = True,
-            cmc_method         = "ecc",
+            cmc_method         = cmc_method,
             track_high_thresh  = 0.5,
             track_low_thresh   = 0.1,
             new_track_thresh   = 0.6,

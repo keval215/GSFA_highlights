@@ -85,6 +85,9 @@ class PlayerDetector:
         self.conf   = conf
         self.device = device
         self.model  = YOLO(model_path)
+        # fp16 on CUDA for ~2x throughput on T4; CPU path stays fp32.
+        self.half   = (device == "cuda")
+        self.imgsz  = 640
 
     # ------------------------------------------------------------------
     # Single frame
@@ -97,8 +100,31 @@ class PlayerDetector:
         fps: float = 30.0,
     ) -> FrameDetections:
         """Run inference on one BGR frame. Returns FrameDetections."""
-        results = self.model(frame, conf=self.conf, device=self.device, verbose=False)
+        results = self.model(frame, conf=self.conf, device=self.device,
+                              imgsz=self.imgsz, half=self.half, verbose=False)
         return self._parse(results[0], frame_idx, fps)
+
+    # ------------------------------------------------------------------
+    # Batched frames (one GPU call for K frames)
+    # ------------------------------------------------------------------
+
+    def detect_batch(
+        self,
+        frames: list[np.ndarray],
+        frame_indices: list[int],
+        fps: float = 30.0,
+    ) -> list[FrameDetections]:
+        """Run inference on a list of BGR frames in a single batched call.
+
+        Ultralytics returns results aligned to input order; each is parsed
+        independently, so the output is identical to calling detect() per
+        frame — only faster (one launch instead of K)."""
+        if not frames:
+            return []
+        results = self.model(frames, conf=self.conf, device=self.device,
+                             imgsz=self.imgsz, half=self.half, verbose=False)
+        return [self._parse(r, fidx, fps)
+                for r, fidx in zip(results, frame_indices)]
 
     # ------------------------------------------------------------------
     # Full video

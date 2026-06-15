@@ -3,10 +3,14 @@ service/clip_processor.py — drives ONE 60 s clip through the existing
 pipeline classes (video_analysis/, detectors/, team_classifier/,
 tracking/ — no CV logic rewritten, no rendering).
 
-Per processed frame (15 fps stride):
-    detect → team classify → track → ball Kalman → CarrierEngine
-    → PassEventTracker → bucket the possession label and any
-    retroactive adjustments into this minute's counters.
+Frames (15 fps stride) are processed in windows of CLIP_BATCH_WINDOW:
+    Pass 1 (batched GPU, stateless): player detect + SigLIP team embed +
+        ball detect for the whole window in one call each.
+    Pass 2 (strictly sequential, stateful): track → ball Kalman →
+        CarrierEngine → PassEventTracker → bucket the possession label and
+        any retroactive adjustments into this minute's counters.
+The two passes are equivalent to the old per-frame loop (same frames, same
+models, same order into the stateful stages) — only the GPU work is batched.
 
 Adjustments that resolve in this clip but whose travel frames started in
 the previous clip are split via session.split_adjustment(): the
@@ -18,6 +22,7 @@ written.
 from __future__ import annotations
 
 import logging
+import time
 
 import cv2
 
@@ -52,32 +57,54 @@ def process_clip(
 
     fps        = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_step = max(1, round(fps / config.TARGET_PROCESS_FPS))
+    window_k   = max(1, config.CLIP_BATCH_WINDOW)
 
     counters   = MinuteCounters()
     correction: PriorCorrection | None = None
 
-    fidx = 0
-    try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            if fidx % frame_step != 0:
-                fidx += 1
-                continue
+    # Per-stage timers (ms, accumulated over the whole clip).
+    t = {"decode": 0.0, "player_det": 0.0, "team_clf": 0.0, "ball_det": 0.0,
+         "tracker": 0.0, "ball_kalman": 0.0, "carrier": 0.0, "pass": 0.0}
+    n_processed = 0
 
-            # --- detection + attribution (state continues from previous clip)
-            player_dets = session.models.player_det.detect(frame, fidx, fps)
-            session.team_clf.classify(frame, player_dets)
+    # Processed frames buffered until a window is full, then run as one batch.
+    win_frames: list = []
+    win_fidx:   list[int] = []
+
+    def flush_window() -> None:
+        """Run one window: batched GPU inference (Pass 1, stateless) then the
+        sequential stateful logic (Pass 2) in strict frame order — identical
+        semantics to the old per-frame loop, just reordered for batching."""
+        nonlocal correction, n_processed
+        if not win_frames:
+            return
+
+        # --- Pass 1: batched, stateless GPU inference -------------------
+        p0 = time.perf_counter()
+        dets_list = session.models.player_det.detect_batch(win_frames, win_fidx, fps)
+        p1 = time.perf_counter(); t["player_det"] += (p1 - p0) * 1000
+
+        session.team_clf.classify_batch(win_frames, dets_list)
+        p2 = time.perf_counter(); t["team_clf"] += (p2 - p1) * 1000
+
+        balls = session.models.ball_det.detect_batch(win_frames)
+        p3 = time.perf_counter(); t["ball_det"] += (p3 - p2) * 1000
+
+        # --- Pass 2: strictly sequential, stateful logic ----------------
+        for frame, player_dets, raw_ball in zip(win_frames, dets_list, balls):
+            s0 = time.perf_counter()
             session.tracker.update(frame, player_dets.players)
+            s1 = time.perf_counter(); t["tracker"] += (s1 - s0) * 1000
 
-            raw_ball         = session.models.ball_det.detect(frame)
             ball_state, ball = session.ball_tracker.update(raw_ball)
+            s2 = time.perf_counter(); t["ball_kalman"] += (s2 - s1) * 1000
 
             carrier = session.carrier_eng.update(player_dets.players, ball_state, ball)
+            s3 = time.perf_counter(); t["carrier"] += (s3 - s2) * 1000
 
             label, adjustments = session.pass_track.update(carrier, session.proc_idx)
             session.proc_idx += 1
+            t["pass"] += (time.perf_counter() - s3) * 1000
 
             counters.add_label(label)
 
@@ -96,8 +123,31 @@ def process_clip(
                             half=prev_half, minute=prev_minute,
                             kind=kind, team_id=team_id, frames=prior_n,
                         )
+            n_processed += 1
+
+        win_frames.clear()
+        win_fidx.clear()
+
+    fidx = 0
+    try:
+        while True:
+            d0 = time.perf_counter()
+            ret, frame = cap.read()
+            t["decode"] += (time.perf_counter() - d0) * 1000
+            if not ret:
+                break
+            if fidx % frame_step != 0:
+                fidx += 1
+                continue
+
+            win_frames.append(frame)
+            win_fidx.append(fidx)
+            if len(win_frames) >= window_k:
+                flush_window()
 
             fidx += 1
+
+        flush_window()   # process the trailing partial window
     finally:
         cap.release()
 
@@ -115,6 +165,19 @@ def process_clip(
         counters.count_event(evt.kind, evt.from_team_id)
 
     session.finish_clip(half, minute)
+
+    if n_processed:
+        total_s = sum(t.values()) / 1000.0
+        log.info(
+            "[%s] h%d m%d timing: %d frames | total %.1fs | per-frame ms: "
+            "decode=%.1f player_det=%.1f team_clf=%.1f ball_det=%.1f "
+            "tracker=%.1f ball_kalman=%.1f carrier=%.1f pass=%.1f",
+            session.match_id, half, minute, n_processed, total_s,
+            t["decode"]      / n_processed, t["player_det"] / n_processed,
+            t["team_clf"]    / n_processed, t["ball_det"]   / n_processed,
+            t["tracker"]     / n_processed, t["ball_kalman"]/ n_processed,
+            t["carrier"]     / n_processed, t["pass"]       / n_processed,
+        )
 
     return ClipResult(
         minute_row=counters.to_minute_row(session.match_id, half, minute, clip_blob_path),

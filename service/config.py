@@ -64,6 +64,12 @@ HEARTBEAT_FILE  = MATCH_STATE_DIR / "worker_heartbeat.json"
 # --- Tunables ----------------------------------------------------------------
 
 TARGET_PROCESS_FPS    = float(os.environ.get("TARGET_PROCESS_FPS", "15"))
+# BoT-SORT camera-motion compensation: ecc (default, accurate, CPU-heavy) |
+# sof (sparse optical flow, cheaper) | orb | sift | none. sof is a speed/
+# accuracy trade — validate events/minute_stats before switching off ecc.
+CMC_METHOD            = os.environ.get("CMC_METHOD", "ecc")
+# Frames per GPU batch in clip_processor's two-pass loop (Pass 1 inference).
+CLIP_BATCH_WINDOW     = int(os.environ.get("CLIP_BATCH_WINDOW", "16"))
 DEVICE                = os.environ.get("DEVICE", "cuda")          # detectors + classifier
 FIT_SAMPLE_EVERY      = int(os.environ.get("FIT_SAMPLE_EVERY", "5"))
 FIT_SILHOUETTE_MIN    = float(os.environ.get("FIT_SILHOUETTE_MIN", "0.20"))

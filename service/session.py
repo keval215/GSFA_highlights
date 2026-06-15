@@ -151,7 +151,8 @@ class MatchSession:
 
         # Cross-clip CV state (Conflict 2). PlayerTracker frame rate uses the
         # processed-frame rate because it only ever sees strided frames.
-        self.tracker      = PlayerTracker(fps=config.TARGET_PROCESS_FPS)
+        self.tracker      = PlayerTracker(fps=config.TARGET_PROCESS_FPS,
+                                          cmc_method=config.CMC_METHOD)
         self.ball_tracker = BallTracker()
         self.carrier_eng  = CarrierEngine()
         self.pass_track   = PassEventTracker()

@@ -167,7 +167,11 @@ class MatchSession:
         self.last_touched = time.monotonic()
 
         if self.fit_pkl_path.exists():
-            self.team_clf   = joblib.load(self.fit_pkl_path)
+            # Route through GSFATeamClassifier.load (not raw joblib.load) so
+            # _use_fast_processor() re-creates the fast SigLIP processor and
+            # overrides the slow one pickled into the pkl. Raw joblib.load
+            # bypasses that and keeps the slow PIL processor → ~90ms/frame.
+            self.team_clf   = GSFATeamClassifier.load(self.fit_pkl_path, progress=False)
             self.fit_status = "ok"
             log.info("[%s] team fit loaded from %s", match_id, self.fit_pkl_path)
 

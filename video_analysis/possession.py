@@ -193,12 +193,14 @@ class BallTracker:
             return self.DETECTED, det
 
         pred = self._kf.predict()
-        px, py = float(pred[0]), float(pred[1])
+        # cv2.KalmanFilter returns an (N, 1) column vector; .item() pulls the
+        # scalar out (float() on a size-1 ndarray raises under numpy 2.x).
+        px, py = float(pred[0].item()), float(pred[1].item())
 
         if det is not None and self._accept(det, px, py):
             meas = np.array([[np.float32(det.centre[0])], [np.float32(det.centre[1])]])
             est  = self._kf.correct(meas)
-            ex, ey = int(est[0]), int(est[1])
+            ex, ey = int(est[0].item()), int(est[1].item())
             self.state       = self.DETECTED
             self.missing_for = 0
             self.last_obs    = det

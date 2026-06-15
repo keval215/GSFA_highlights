@@ -17,6 +17,12 @@ services:
     image: gsfa-highlights:latest
     command: python3.11 -m service.worker
     env_file: /etc/gsfa-highlights.env
+    # Persist the HuggingFace cache on the /mnt/data volume so SigLIP's weights
+    # and spiece.model survive container rebuilds. The team-fit pkl pickles a
+    # SigLIP tokenizer that references these files by path; an ephemeral
+    # container-local cache (/root/.cache) breaks the pkl after every rebuild.
+    environment:
+      - HF_HOME=/mnt/data/hf_cache
     gpus: all
     volumes:
       - /mnt/data:/mnt/data

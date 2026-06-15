@@ -28,7 +28,7 @@ import joblib
 import numpy as np
 
 from detectors.player_detector import PlayerDetector
-from team_classifier.team_classifier import GSFATeamClassifier
+from team_classifier.team_classifier import GSFATeamClassifier, TeamSpec
 from tracking.player_tracker import PlayerTracker
 from video_analysis import possession as vp
 from video_analysis.possession import (
@@ -38,7 +38,7 @@ from video_analysis.possession import (
     PassEventTracker,
 )
 
-from service import config, stats
+from service import config, db, stats
 
 log = logging.getLogger("gsfa.session")
 
@@ -200,6 +200,7 @@ class MatchSession:
             self.team_clf   = clf
             self.fit_status = "ok"
             self._fit_crops_clip1 = []
+            self._resolve_team_names(clf, crops)
             joblib.dump(clf, self.fit_pkl_path)
             log.info("[%s] team fit ok (silhouette=%.3f, crops=%d) → %s",
                      self.match_id, score, len(crops), self.fit_pkl_path)
@@ -218,10 +219,33 @@ class MatchSession:
             self.team_clf   = clf
             self.fit_status = "ok"
             self._fit_crops_clip1 = []
+            self._resolve_team_names(clf, crops)
             joblib.dump(clf, self.fit_pkl_path)
             log.error("[%s] refit still below threshold (silhouette=%.3f) — "
                       "committing anyway", self.match_id, score)
         return self.fit_status
+
+    def _resolve_team_names(self, clf: GSFATeamClassifier,
+                            crops: list[np.ndarray]) -> None:
+        """Map the two clusters to the caller-supplied team names by jersey
+        colour. Runs once, when the fit is committed; the result is pickled
+        with clf so later clips only look it up. No-op (team_id_to_name stays
+        None → payload uses team0/team1) if the caller did not supply both
+        names and both colours, or if colour resolution fails."""
+        conn = db.get_conn()
+        try:
+            raw = db.get_team_specs(conn, self.match_id)
+        finally:
+            conn.close()
+        if not raw:
+            return
+        specs = [TeamSpec(name=n, colour=c) for n, c in raw]
+        try:
+            mapping = clf.resolve_team_names(specs, crops)
+            log.info("[%s] team colours resolved → %s", self.match_id, mapping)
+        except (ValueError, RuntimeError) as exc:
+            log.warning("[%s] team colour resolution failed (%s) — "
+                        "falling back to team0/team1 labels", self.match_id, exc)
 
     # ------------------------------------------------------------------
     # Per-clip processing hooks (called by clip_processor)

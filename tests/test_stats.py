@@ -1,6 +1,7 @@
 """Unit tests for the dependency-free stats layer (service/stats.py):
-minute bucketing, retroactive-correction splitting, ordering guard and
-the callback payload math."""
+minute bucketing, retroactive-correction splitting and the ordering guard.
+(Payload shaping lives in build_payload and is exercised end-to-end; the
+raw cumulative counters it emits are asserted there, not here.)"""
 
 import sys
 from pathlib import Path
@@ -16,7 +17,6 @@ from service.stats import (
     LBL_TEAM0,
     LBL_TEAM1,
     MinuteCounters,
-    build_payload,
     is_expected,
     split_adjustment,
 )
@@ -136,59 +136,3 @@ def test_next_minute_same_half():
 def test_halftime_rollover():
     assert is_expected(1, 20, 2, 1)
     assert not is_expected(1, 20, 2, 2)
-
-
-# ---------------------------------------------------------------------------
-# Callback payload math
-# ---------------------------------------------------------------------------
-
-def _sums(**over):
-    base = {
-        "frames_team0": 0, "frames_team1": 0, "frames_loose": 0, "frames_oof": 0,
-        "passes_completed_t0": 0, "passes_completed_t1": 0,
-        "interceptions_t0": 0, "interceptions_t1": 0,
-        "ball_lost_t0": 0, "ball_lost_t1": 0,
-    }
-    base.update(over)
-    return base
-
-
-def test_possession_pct_excludes_loose_and_oof():
-    sums = _sums(frames_team0=700, frames_team1=300, frames_loose=500, frames_oof=999)
-    p = build_payload("m", 1, 7, 0, sums)
-    assert p["cumulative"]["possession_pct"] == {"team0": 70.0, "team1": 30.0}
-
-
-def test_possession_pct_zero_denominator():
-    p = build_payload("m", 1, 1, 0, _sums(frames_loose=100))
-    assert p["cumulative"]["possession_pct"] == {"team0": 0.0, "team1": 0.0}
-
-
-def test_pass_accuracy_ignores_ball_lost():
-    sums = _sums(passes_completed_t0=8, interceptions_t0=2, ball_lost_t0=5)
-    p = build_payload("m", 1, 7, 0, sums)
-    assert p["cumulative"]["pass_accuracy"]["team0"] == 0.8
-
-
-def test_payload_shape():
-    p = build_payload("match_x", 2, 3, 1, _sums(frames_team0=1, frames_team1=1))
-    assert p["match_id"] == "match_x"
-    assert p["half"] == 2
-    assert p["minute"] == 3
-    assert p["revision"] == 1
-    assert set(p["cumulative"].keys()) == {
-        "possession_pct", "passes", "pass_accuracy", "interceptions", "ball_lost",
-    }
-    # Contested and dribbles intentionally absent.
-    flat = str(p)
-    assert "contested" not in flat
-    assert "dribble" not in flat
-
-
-def test_averaging_percentages_would_be_wrong():
-    """The motivating example: minute 1 has 800 countable frames (75% t0),
-    minute 2 has 200 (50% t0). Averaged percentages give 62.5%; the frame
-    sum gives the correct 70%."""
-    sums = _sums(frames_team0=600 + 100, frames_team1=200 + 100)
-    p = build_payload("m", 1, 2, 0, sums)
-    assert p["cumulative"]["possession_pct"]["team0"] == 70.0

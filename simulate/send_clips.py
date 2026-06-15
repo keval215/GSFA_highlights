@@ -37,10 +37,13 @@ def find_clips(clips_dir: Path) -> list[tuple[int, int, Path]]:
 
 
 def send(api: str, match_id: str, half: int, minute: int, path: Path,
-         team0: str | None, team1: str | None, venue: str | None) -> dict:
+         team0: str | None, team1: str | None, venue: str | None,
+         team0_colour: str | None = None, team1_colour: str | None = None) -> dict:
     data = {"match_id": match_id, "half": str(half), "minute": str(minute)}
     if team0: data["team0_name"] = team0
     if team1: data["team1_name"] = team1
+    if team0_colour: data["team0_colour"] = team0_colour
+    if team1_colour: data["team1_colour"] = team1_colour
     if venue: data["venue_id"]   = venue
     with open(path, "rb") as f:
         resp = requests.post(
@@ -64,6 +67,8 @@ def main() -> None:
                     help="next POST as soon as the 202 arrives")
     ap.add_argument("--team0", default=None)
     ap.add_argument("--team1", default=None)
+    ap.add_argument("--team0-colour", default=None, help="jersey colour, hex or name (e.g. orange)")
+    ap.add_argument("--team1-colour", default=None, help="jersey colour, hex or name (e.g. blue)")
     ap.add_argument("--venue", default=None)
     args = ap.parse_args()
 
@@ -78,7 +83,8 @@ def main() -> None:
     for i, (half, minute, path) in enumerate(clips):
         t0 = time.monotonic()
         body = send(args.api, args.match_id, half, minute, path,
-                    args.team0, args.team1, args.venue)
+                    args.team0, args.team1, args.venue,
+                    args.team0_colour, args.team1_colour)
         dup = "  (duplicate)" if body.get("duplicate") else ""
         print(f"[send] h{half} m{minute} → 202 in {time.monotonic()-t0:.1f}s{dup}")
 

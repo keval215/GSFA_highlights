@@ -93,8 +93,8 @@ class Worker:
         if progress is None:
             # api normally creates the match row; cover the gap anyway.
             db.ensure_match(self.conn, msg.match_id)
-            progress = (1, 0, "pending")
-        last_half, last_minute, _fit = progress
+            progress = (1, 0)
+        last_half, last_minute = progress
 
         # --- Ordering guard (Azure Queue Storage is only approximately FIFO)
         if not is_expected(last_half, last_minute, msg.half, msg.minute):
@@ -118,16 +118,16 @@ class Worker:
 
         # --- Team fit (clip 1, or quality-guard refit on clip 2)
         if session.fit_status != "ok":
-            status = session.ensure_fit(str(clip_path))
-            db.set_team_fit_status(self.conn, msg.match_id, status)
+            session.ensure_fit(str(clip_path))
 
         # --- Process the clip with cross-clip state
         result = process_clip(session, str(clip_path), msg.half, msg.minute,
                               clip_blob_path=msg.blob_path)
 
         # --- One SQL transaction (minute row + correction + events + outbox)
+        team_names = session.team_clf.team_id_to_name if session.team_clf else None
         db.write_clip_result(self.conn, result.minute_row, result.correction,
-                             result.events)
+                             result.events, team_names)
 
         self._last_clip_seconds = round(time.monotonic() - t_start, 1)
         log.info("clip %s h%d m%d processed in %.1fs (events=%d, correction=%s)",

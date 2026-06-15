@@ -16,7 +16,7 @@ name: Deploy to Azure VM
 
 on:
   push:
-    branches: [test,main]
+    branches: [test]
   workflow_dispatch: {}
 
 concurrency:
@@ -38,9 +38,9 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/gsfa-highlights/repo
-            echo "[deploy] pulling latest from main..."
+            echo "[deploy] pulling latest from test..."
             git fetch --all
-            git reset --hard origin/main
+            git reset --hard origin/test
             echo "[deploy] rebuilding container..."
             docker compose up -d --build
             echo "[deploy] pruning old images..."

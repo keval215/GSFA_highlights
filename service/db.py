@@ -26,7 +26,7 @@ from service.stats import EventRow, MinuteRow, PriorCorrection, build_payload
 
 __all__ = [
     "EventRow", "MinuteRow", "PriorCorrection", "OutboxRow", "build_payload",
-    "get_conn", "ensure_match", "get_match_progress", "set_team_fit_status",
+    "get_conn", "ensure_match", "get_team_specs", "get_match_progress",
     "minute_exists", "cumulative_read", "write_clip_result",
     "fetch_pending", "mark_sent", "mark_failed",
 ]
@@ -51,6 +51,8 @@ def ensure_match(
     venue_id: Optional[str] = None,
     team0_name: Optional[str] = None,
     team1_name: Optional[str] = None,
+    team0_colour: Optional[str] = None,
+    team1_colour: Optional[str] = None,
 ) -> None:
     """First clip auto-creates the match; later calls only fill in missing
     metadata. Commits."""
@@ -58,43 +60,54 @@ def ensure_match(
     cur.execute("SELECT 1 FROM matches WHERE match_id = ?", match_id)
     if cur.fetchone() is None:
         cur.execute(
-            "INSERT INTO matches (match_id, venue_id, team0_name, team1_name) "
-            "VALUES (?, ?, ?, ?)",
-            match_id, venue_id, team0_name, team1_name,
+            "INSERT INTO matches "
+            "  (match_id, venue_id, team0_name, team1_name, team0_colour, team1_colour) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            match_id, venue_id, team0_name, team1_name, team0_colour, team1_colour,
         )
     else:
         cur.execute(
             "UPDATE matches SET "
-            "  venue_id   = COALESCE(venue_id, ?), "
-            "  team0_name = COALESCE(team0_name, ?), "
-            "  team1_name = COALESCE(team1_name, ?), "
+            "  venue_id     = COALESCE(venue_id, ?), "
+            "  team0_name   = COALESCE(team0_name, ?), "
+            "  team1_name   = COALESCE(team1_name, ?), "
+            "  team0_colour = COALESCE(team0_colour, ?), "
+            "  team1_colour = COALESCE(team1_colour, ?), "
             "  updated_at = SYSUTCDATETIME() "
             "WHERE match_id = ?",
-            venue_id, team0_name, team1_name, match_id,
+            venue_id, team0_name, team1_name, team0_colour, team1_colour, match_id,
         )
     conn.commit()
 
 
-def get_match_progress(conn: pyodbc.Connection, match_id: str) -> Optional[tuple[int, int, str]]:
-    """(last_half_processed, last_minute_processed, team_fit_status) or None."""
+def get_team_specs(
+    conn: pyodbc.Connection, match_id: str,
+) -> Optional[list[tuple[str, str]]]:
+    """[(team0_name, team0_colour), (team1_name, team1_colour)] for colour→name
+    resolution, or None unless BOTH teams have a name AND a colour. Cluster
+    matching needs all four values, so a partial set is treated as 'not set'."""
     cur = conn.cursor()
     cur.execute(
-        "SELECT last_half_processed, last_minute_processed, team_fit_status "
+        "SELECT team0_name, team0_colour, team1_name, team1_colour "
         "FROM matches WHERE match_id = ?",
         match_id,
     )
     row = cur.fetchone()
-    return (int(row[0]), int(row[1]), str(row[2])) if row else None
+    if row is None or not all(row):
+        return None
+    return [(str(row[0]), str(row[1])), (str(row[2]), str(row[3]))]
 
 
-def set_team_fit_status(conn: pyodbc.Connection, match_id: str, status: str) -> None:
+def get_match_progress(conn: pyodbc.Connection, match_id: str) -> Optional[tuple[int, int]]:
+    """(last_half_processed, last_minute_processed) or None."""
     cur = conn.cursor()
     cur.execute(
-        "UPDATE matches SET team_fit_status = ?, updated_at = SYSUTCDATETIME() "
-        "WHERE match_id = ?",
-        status, match_id,
+        "SELECT last_half_processed, last_minute_processed "
+        "FROM matches WHERE match_id = ?",
+        match_id,
     )
-    conn.commit()
+    row = cur.fetchone()
+    return (int(row[0]), int(row[1])) if row else None
 
 
 def minute_exists(conn: pyodbc.Connection, match_id: str, half: int, minute: int) -> bool:
@@ -141,6 +154,7 @@ def write_clip_result(
     row: MinuteRow,
     correction: Optional[PriorCorrection],
     events: list[EventRow],
+    team_id_to_name: Optional[dict[int, str]] = None,
 ) -> dict:
     """One SQL transaction per processed clip:
         upsert minute row + UPDATE prior minute (revision += 1) if corrected
@@ -215,7 +229,8 @@ def write_clip_result(
 
         # 5. Outbox row with a fresh cumulative payload (corrections included).
         sums    = cumulative_read(conn, row.match_id, row.half, row.minute)
-        payload = build_payload(row.match_id, row.half, row.minute, revision, sums)
+        payload = build_payload(row.match_id, row.half, row.minute, revision, sums,
+                                team_id_to_name)
         cur.execute(
             "INSERT INTO callback_outbox (match_id, half, minute, payload) "
             "VALUES (?, ?, ?, ?)",

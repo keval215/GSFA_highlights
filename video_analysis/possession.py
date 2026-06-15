@@ -101,7 +101,9 @@ class BallDetector:
         # Fuse/compile the graph for inference; no-op on backends where it is
         # unsupported. Benefits both the service and the local pipeline.
         try:
-            self.model.optimize_for_inference()
+            import torch
+            _dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+            self.model.optimize_for_inference(dtype=_dtype)
         except Exception as exc:  # pragma: no cover - backend dependent
             print(f"[BallDetector] optimize_for_inference skipped: {exc}")
         self.ball_class_id = ball_class_id

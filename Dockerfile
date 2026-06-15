@@ -8,9 +8,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1
 
 # Python 3.11 + ODBC Driver 18 for SQL Server (pyodbc) + git (sports pkg)
+# libgl1/libglib2.0-0/libxcb1/... : OpenCV native deps (full opencv-python is
+# pulled in transitively by ultralytics and needs these even on a headless box).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.11 python3.11-venv python3-pip python3.11-dev \
         curl gnupg2 git ca-certificates unixodbc-dev \
+        libgl1 libglib2.0-0 libxcb1 libsm6 libxext6 libxrender1 \
     && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
         | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
     && echo "deb [arch=amd64,armhf,arm64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" \

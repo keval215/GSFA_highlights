@@ -87,7 +87,21 @@ def process_clip(
         session.team_clf.classify_batch(win_frames, dets_list)
         p2 = time.perf_counter(); t["team_clf"] += (p2 - p1) * 1000
 
-        balls = session.models.ball_det.detect_batch(win_frames)
+        # Ball detection on a stride: run RF-DETR only every BALL_DETECT_EVERY-th
+        # processed frame; off-frames get None and the ball Kalman coasts. base is
+        # session.proc_idx at window start (Pass 2 hasn't incremented it yet), so
+        # the stride is continuous across window boundaries.
+        stride = config.BALL_DETECT_EVERY
+        if stride == 1:
+            balls = session.models.ball_det.detect_batch(win_frames)
+        else:
+            base    = session.proc_idx
+            det_pos = [k for k in range(len(win_frames)) if (base + k) % stride == 0]
+            sub     = (session.models.ball_det.detect_batch([win_frames[k] for k in det_pos])
+                       if det_pos else [])
+            balls   = [None] * len(win_frames)
+            for k, b in zip(det_pos, sub):
+                balls[k] = b
         p3 = time.perf_counter(); t["ball_det"] += (p3 - p2) * 1000
 
         # --- Pass 2: strictly sequential, stateful logic ----------------

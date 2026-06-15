@@ -70,6 +70,10 @@ TARGET_PROCESS_FPS    = float(os.environ.get("TARGET_PROCESS_FPS", "15"))
 CMC_METHOD            = os.environ.get("CMC_METHOD", "ecc")
 # Frames per GPU batch in clip_processor's two-pass loop (Pass 1 inference).
 CLIP_BATCH_WINDOW     = int(os.environ.get("CLIP_BATCH_WINDOW", "16"))
+# Run RF-DETR ball detection every Nth processed frame; off-frames feed None to
+# BallTracker, which coasts via Kalman (KALMAN_COAST_FRAMES). 1 = every frame
+# (default, no change). 2 ~halves ball_det cost — A/B events/minute_stats first.
+BALL_DETECT_EVERY     = max(1, int(os.environ.get("BALL_DETECT_EVERY", "1")))
 DEVICE                = os.environ.get("DEVICE", "cuda")          # detectors + classifier
 FIT_SAMPLE_EVERY      = int(os.environ.get("FIT_SAMPLE_EVERY", "5"))
 FIT_SILHOUETTE_MIN    = float(os.environ.get("FIT_SILHOUETTE_MIN", "0.20"))

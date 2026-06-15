@@ -43,10 +43,12 @@ from typing import TYPE_CHECKING
 import cv2
 import joblib
 import numpy as np
+import supervision as sv
+import torch
 
 from transformers import AutoProcessor
 
-from sports.common.team import SIGLIP_MODEL_PATH, TeamClassifier
+from sports.common.team import SIGLIP_MODEL_PATH, TeamClassifier, create_batches
 from detectors.cache import cache_path
 
 if TYPE_CHECKING:
@@ -140,6 +142,29 @@ class GSFATeamClassifier:
             # transformers < 4.40 doesn't accept use_fast on image processors;
             # keep the existing (slow) processor — correctness is unaffected.
             pass
+
+    def _embed(self, crops: list[np.ndarray]) -> np.ndarray:
+        """Embed crops with SigLIP, running the forward pass in fp16 via autocast.
+
+        Mirrors sports.common.team.TeamClassifier.extract_features but wraps the
+        model call in torch.autocast(float16) on CUDA: weights stay fp32 (so no
+        .half(), no pkl/processor changes, no pixel_values dtype mismatch) while
+        the matmuls run on the T4 tensor cores. This is the per-frame hot path —
+        the fp32 forward was the team_clf bottleneck (~90ms/frame). Returns fp32
+        numpy so the UMAP reducer / KMeans see the same dtype as at fit time.
+        """
+        clf      = self._classifier
+        use_cuda = str(clf.device).startswith("cuda")
+        pillows  = [sv.cv2_to_pillow(c) for c in crops]
+        data: list[np.ndarray] = []
+        with torch.inference_mode():
+            for batch in create_batches(pillows, clf.batch_size):
+                inputs = clf.processor(images=batch, return_tensors="pt").to(clf.device)
+                with torch.autocast("cuda", dtype=torch.float16, enabled=use_cuda):
+                    outputs = clf.features_model(**inputs)
+                emb = torch.mean(outputs.last_hidden_state, dim=1).float().cpu().numpy()
+                data.append(emb)
+        return np.concatenate(data)
 
     # ------------------------------------------------------------------
     # Internal crop helpers
@@ -305,7 +330,7 @@ class GSFATeamClassifier:
 
         # Split predict() into its three stages so we keep the 768-D SigLIP
         # features for the player tracker (otherwise discarded after UMAP).
-        features    = self._classifier.extract_features(crops)        # (N, 768)
+        features    = self._embed(crops)                              # (N, 768), fp16 forward
         projections = self._classifier.reducer.transform(features)
         team_ids    = self._classifier.cluster_model.predict(projections)
 
@@ -346,7 +371,7 @@ class GSFATeamClassifier:
         if not crops:
             return
 
-        features    = self._classifier.extract_features(crops)        # (N, 768)
+        features    = self._embed(crops)                              # (N, 768), fp16 forward
         projections = self._classifier.reducer.transform(features)
         team_ids    = self._classifier.cluster_model.predict(projections)
 

@@ -3,7 +3,7 @@ service/api.py — FastAPI ingestion endpoint (no GPU).
 
 POST /api/clips  multipart/form-data:
     file (60 s mp4), match_id, half, minute
-    [+ venue_id, team0_name, team1_name, team0_colour, team1_colour]
+    [+ team0_name, team1_name, team0_colour, team1_colour]
   → upload blob clips/<match_id>/<half>_<minute>.mp4
   → enqueue {"match_id","half","minute","blob_path"}
   → 202 in ~1–2 s. Processing is never inline.
@@ -54,7 +54,6 @@ async def post_clip(
     match_id: str = Form(...),
     half: int = Form(...),
     minute: int = Form(...),
-    venue_id: Optional[str] = Form(None),
     team0_name: Optional[str] = Form(None),
     team1_name: Optional[str] = Form(None),
     team0_colour: Optional[str] = Form(None),   # hex "#FF6600" or CSS name "orange"
@@ -71,7 +70,7 @@ async def post_clip(
     # First clip auto-creates the match; later clips fill missing metadata.
     conn = db.get_conn()
     try:
-        db.ensure_match(conn, match_id, venue_id, team0_name, team1_name,
+        db.ensure_match(conn, match_id, team0_name, team1_name,
                         team0_colour, team1_colour)
         already_processed = db.minute_exists(conn, match_id, half, minute)
     finally:

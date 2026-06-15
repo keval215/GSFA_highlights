@@ -48,7 +48,6 @@ def get_conn() -> pyodbc.Connection:
 def ensure_match(
     conn: pyodbc.Connection,
     match_id: str,
-    venue_id: Optional[str] = None,
     team0_name: Optional[str] = None,
     team1_name: Optional[str] = None,
     team0_colour: Optional[str] = None,
@@ -61,21 +60,20 @@ def ensure_match(
     if cur.fetchone() is None:
         cur.execute(
             "INSERT INTO matches "
-            "  (match_id, venue_id, team0_name, team1_name, team0_colour, team1_colour) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            match_id, venue_id, team0_name, team1_name, team0_colour, team1_colour,
+            "  (match_id, team0_name, team1_name, team0_colour, team1_colour) "
+            "VALUES (?, ?, ?, ?, ?)",
+            match_id, team0_name, team1_name, team0_colour, team1_colour,
         )
     else:
         cur.execute(
             "UPDATE matches SET "
-            "  venue_id     = COALESCE(venue_id, ?), "
             "  team0_name   = COALESCE(team0_name, ?), "
             "  team1_name   = COALESCE(team1_name, ?), "
             "  team0_colour = COALESCE(team0_colour, ?), "
             "  team1_colour = COALESCE(team1_colour, ?), "
             "  updated_at = SYSUTCDATETIME() "
             "WHERE match_id = ?",
-            venue_id, team0_name, team1_name, team0_colour, team1_colour, match_id,
+            team0_name, team1_name, team0_colour, team1_colour, match_id,
         )
     conn.commit()
 

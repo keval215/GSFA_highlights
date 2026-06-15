@@ -44,7 +44,9 @@ import cv2
 import joblib
 import numpy as np
 
-from sports.common.team import TeamClassifier
+from transformers import AutoProcessor
+
+from sports.common.team import SIGLIP_MODEL_PATH, TeamClassifier
 from detectors.cache import cache_path
 
 if TYPE_CHECKING:
@@ -103,6 +105,7 @@ class GSFATeamClassifier:
         batch_size: int = 32,
     ) -> None:
         self._classifier  = TeamClassifier(device=device, batch_size=batch_size)
+        self._use_fast_processor()
         self._is_fitted   = False
         self.device       = device
         self.batch_size   = batch_size
@@ -110,6 +113,33 @@ class GSFATeamClassifier:
         # resolve_team_names() at fit time, then persisted with the pickle.
         # None ⇒ caller gave no colours; downstream falls back to team0/team1.
         self.team_id_to_name: dict[int, str] | None = None
+
+    # ------------------------------------------------------------------
+    # SigLIP preprocessing speedup
+    # ------------------------------------------------------------------
+
+    def _use_fast_processor(self) -> None:
+        """Swap the wrapped SigLIP processor for the torchvision-backed "fast"
+        one. SigLIP itself already runs on cuda:0; the per-frame cost is the
+        slow PIL-based AutoProcessor doing resize/normalize on CPU (the box
+        only has 4 vCPUs, so this dominates classify()). The fast processor
+        applies the *same* normalization, so embeddings — and therefore the
+        team_ids/UMAP/KMeans output — are unchanged; only the CPU preprocessing
+        is faster.
+
+        Called on every construction AND every warm-load: the persisted
+        team-fit pkl has the (slow) processor baked into the pickle, so loading
+        it never re-runs AutoProcessor.from_pretrained. Re-creating the
+        processor here keeps the existing pkl (fitted UMAP + KMeans + SigLIP
+        weights) intact while still getting the fast preprocessing path.
+        """
+        try:
+            self._classifier.processor = AutoProcessor.from_pretrained(
+                SIGLIP_MODEL_PATH, use_fast=True)
+        except TypeError:
+            # transformers < 4.40 doesn't accept use_fast on image processors;
+            # keep the existing (slow) processor — correctness is unaffected.
+            pass
 
     # ------------------------------------------------------------------
     # Internal crop helpers
@@ -495,6 +525,9 @@ class GSFATeamClassifier:
         if progress:
             print(f"[TeamClassifier] Loading from {path} …")
         obj = joblib.load(path)
+        # The pickled classifier carries the slow (PIL) processor; swap in the
+        # fast (torchvision) one so warm-loaded matches also get fast preprocessing.
+        obj._use_fast_processor()
         if progress:
             print("[TeamClassifier] Loaded.")
         return obj

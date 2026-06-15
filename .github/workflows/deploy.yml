@@ -34,6 +34,7 @@ jobs:
           username: ${{ secrets.AZURE_VM_USER }}
           key: ${{ secrets.AZURE_VM_SSH_KEY }}
           port: ${{ secrets.AZURE_VM_PORT || 22 }}
+          command_timeout: 30m
           script_stop: true
           script: |
             set -euo pipefail
@@ -41,8 +42,10 @@ jobs:
             echo "[deploy] pulling latest from test..."
             git fetch --all
             git reset --hard origin/test
+            echo "[deploy] removing legacy standalone container if present..."
+            docker rm -f gsfa-highlights 2>/dev/null || true
             echo "[deploy] rebuilding container..."
-            docker compose up -d --build
+            docker compose up -d --build --remove-orphans
             echo "[deploy] pruning old images..."
             docker image prune -f
             echo "[deploy] done."

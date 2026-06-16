@@ -31,7 +31,8 @@ Set in `/etc/gsfa-highlights.env` (loaded via docker-compose `env_file`).
 | `SQL_CONN_STR` | yes | — | pyodbc connection string for Azure SQL `gsfa_stats` |
 | `PLAYER_WEIGHTS` | yes | — | Absolute VM path to YOLO player-detector weights |
 | `BALL_WEIGHTS` | yes | — | Absolute VM path to RF-DETR ball-detector weights |
-| `CALLBACK_URL` | no | `""` | HTTP POST endpoint to receive per-minute stats (empty = disable) |
+| `CALLBACK_URL` | no | `""` | Base origin of the main app (e.g. `https://dev-server.clubduelz.in`), no path. The worker appends `/v1/pvt/tournament-duelz/{match_id}/advance-stats`. Empty = disable |
+| `SUPER_ADMIN_KEY` | no | `""` | `X-Super-Admin-Key` sent with each advance-stats POST. Empty = disable callback |
 | `CALLBACK_RETRIES` | no | `3` | Max delivery attempts per outbox row before it is marked `failed` |
 | `CALLBACK_BACKOFF_BASE` | no | `1.0` | Base seconds for exponential callback backoff (`base × 2^n` → 1s, 2s, 4s) |
 | `CLIPS_CONTAINER` | no | `clips` | Azure Blob container for uploaded clips |
@@ -161,37 +162,39 @@ Operational metrics. Always 200; fields are `null` when the worker has not run y
 
 ---
 
-## Callback (outbox) — POST to CALLBACK_URL
+## Callback (outbox) — POST to the advance-stats endpoint
 
-After each clip is processed and its SQL transaction commits, the worker POSTs the cumulative stats payload to `CALLBACK_URL`. Deliveries are strictly ordered by `(half, minute)`. Retry: up to `CALLBACK_RETRIES` attempts with exponential backoff (`CALLBACK_BACKOFF_BASE × 2^n` seconds). On permanent failure the row is marked `failed` in SQL but processing continues.
+After each clip is processed and its SQL transaction commits, the worker POSTs the cumulative stats to the tournament-duelz advance-stats endpoint:
 
-If `CALLBACK_URL` is unset, rows stay `pending` in `callback_outbox` — no stats are lost.
+```
+POST {CALLBACK_URL}/v1/pvt/tournament-duelz/{match_id}/advance-stats
+X-Super-Admin-Key: {SUPER_ADMIN_KEY}
+```
 
-**Payload shape:**
+`CALLBACK_URL` is the **base origin only** (e.g. `https://dev-server.clubduelz.in`); `match_id` is the tournament-duel ObjectID and fills the `{id}` path segment. Each POST is a **full overwrite** of the duel's `advance_stats` subdocument and the server replies `204 No Content`.
+
+Deliveries are strictly ordered by `(half, minute)`. Retry: up to `CALLBACK_RETRIES` attempts with exponential backoff (`CALLBACK_BACKOFF_BASE × 2^n` seconds); a `401` (bad/missing super-admin key) fails fast without retrying. On permanent failure the row is marked `failed` in SQL but processing continues.
+
+If `CALLBACK_URL` or `SUPER_ADMIN_KEY` is unset, rows stay `pending` in `callback_outbox` — no stats are lost.
+
+**Body shape (flat, all integers ≥ 0):**
 
 ```json
 {
-  "match_id": "match_abc123",
-  "half": 1,
-  "minute": 5,
-  "revision": 0,
-  "teams": { "0": "FCA", "1": "Rovers" },
-  "cumulative": {
-    "frames_FCA":              720,
-    "frames_Rovers":           450,
-    "frames_loose":             80,
-    "frames_oof":               10,
-    "passes_completed_FCA":     14,
-    "passes_completed_Rovers":   9,
-    "interceptions_FCA":         2,
-    "interceptions_Rovers":      1,
-    "ball_lost_FCA":             3,
-    "ball_lost_Rovers":          4
-  }
+  "frames_a": 720,
+  "frames_b": 450,
+  "frames_loose": 80,
+  "frames_oof": 10,
+  "passes_completed_a": 14,
+  "passes_completed_b": 9,
+  "interceptions_a": 2,
+  "interceptions_b": 1,
+  "ball_lost_a": 3,
+  "ball_lost_b": 4
 }
 ```
 
-- All `cumulative` counters are **running totals from minute 1 up to and including the current minute** — not deltas for this clip alone.
-- Per-team keys use the resolved team names from `teams`. If team names were not supplied, the keys fall back to `team0` / `team1`.
-- `revision` increments when a retroactive correction was applied to this minute row (e.g. a cross-clip pass resolved as an interception).
-- Possession percentage is derived by the receiver: `frames_FCA / (frames_FCA + frames_Rovers + frames_loose)`.
+- All counters are **running totals from minute 1 up to and including the current minute** — not deltas for this clip alone. Because each call overwrites, the duel's `advance_stats` always reflects the latest cumulative state.
+- Team mapping is **positional**: team id `0 → a`, team id `1 → b` (the same 0/1 the KMeans team fit assigns). No jersey-name resolution is applied to the body.
+- A retroactive correction to a prior minute simply produces a fresh cumulative body on the next POST, which overwrites with the corrected totals.
+- Possession percentage is derived by the receiver: `frames_a / (frames_a + frames_b + frames_loose)`.

@@ -37,8 +37,9 @@ def _resp(code):
 @mock.patch("service.notifier.time.sleep")
 @mock.patch("service.notifier.requests.post")
 def test_in_order_delivery(post, _sleep, monkeypatch):
-    monkeypatch.setenv("CALLBACK_URL", "http://cb.example/hook")
-    post.return_value = _resp(200)
+    monkeypatch.setenv("CALLBACK_URL", "http://cb.example")
+    monkeypatch.setenv("SUPER_ADMIN_KEY", "k")
+    post.return_value = _resp(204)
     sent, failed = [], []
     with mock.patch.object(notifier.db, "fetch_pending", return_value=_rows()), \
          mock.patch.object(notifier.db, "mark_sent", side_effect=lambda c, oid, a: sent.append(oid)), \
@@ -49,12 +50,17 @@ def test_in_order_delivery(post, _sleep, monkeypatch):
     assert failed == []
     payloads = [c.kwargs["json"] for c in post.call_args_list]
     assert [p["minute"] for p in payloads] == [1, 2, 1]
+    # Per-duel URL (match_id == duel id) + super-admin header on every POST.
+    for c in post.call_args_list:
+        assert c.args[0] == "http://cb.example/v1/pvt/tournament-duelz/m/advance-stats"
+        assert c.kwargs["headers"] == {"X-Super-Admin-Key": "k"}
 
 
 @mock.patch("service.notifier.time.sleep")
 @mock.patch("service.notifier.requests.post")
 def test_exhaustion_marks_failed_and_continues(post, sleep, monkeypatch):
-    monkeypatch.setenv("CALLBACK_URL", "http://cb.example/hook")
+    monkeypatch.setenv("CALLBACK_URL", "http://cb.example")
+    monkeypatch.setenv("SUPER_ADMIN_KEY", "k")
     # First row always 500s; second row succeeds.
     post.side_effect = [_resp(500), _resp(500), _resp(500), _resp(200), _resp(200), _resp(200)]
     sent, failed = [], []
@@ -74,6 +80,17 @@ def test_exhaustion_marks_failed_and_continues(post, sleep, monkeypatch):
 @mock.patch("service.notifier.requests.post")
 def test_no_callback_url_leaves_rows_pending(post, monkeypatch):
     monkeypatch.delenv("CALLBACK_URL", raising=False)
+    monkeypatch.setenv("SUPER_ADMIN_KEY", "k")
+    with mock.patch.object(notifier.db, "fetch_pending") as fetch:
+        notifier.send_pending_for_match(mock.Mock(), "m")
+    fetch.assert_not_called()
+    post.assert_not_called()
+
+
+@mock.patch("service.notifier.requests.post")
+def test_no_super_admin_key_leaves_rows_pending(post, monkeypatch):
+    monkeypatch.setenv("CALLBACK_URL", "http://cb.example")
+    monkeypatch.delenv("SUPER_ADMIN_KEY", raising=False)
     with mock.patch.object(notifier.db, "fetch_pending") as fetch:
         notifier.send_pending_for_match(mock.Mock(), "m")
     fetch.assert_not_called()

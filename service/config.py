@@ -36,9 +36,21 @@ def sql_conn_str() -> str:
 
 
 def callback_url() -> str:
-    """Main-app callback URL. Empty string disables sending (outbox rows
-    stay pending so nothing is lost while the URL is not yet provided)."""
+    """Base origin of the main app (e.g. https://dev-server.clubduelz.in), no
+    path. Empty string disables sending (outbox rows stay pending so nothing is
+    lost while the URL is not yet provided)."""
     return os.environ.get("CALLBACK_URL", "").strip()
+
+
+def super_admin_key() -> str:
+    """X-Super-Admin-Key for the advance-stats endpoint. Empty disables sending."""
+    return os.environ.get("SUPER_ADMIN_KEY", "").strip()
+
+
+def advance_stats_url(duel_id: str) -> str:
+    """Full advance-stats URL for a tournament duel. Empty base disables sending."""
+    base = callback_url().rstrip("/")
+    return f"{base}/v1/pvt/tournament-duelz/{duel_id}/advance-stats" if base else ""
 
 
 CLIPS_CONTAINER   = os.environ.get("CLIPS_CONTAINER", "clips")

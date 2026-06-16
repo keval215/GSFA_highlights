@@ -195,32 +195,25 @@ def build_payload(
     match_id: str, half: int, minute: int, revision: int, sums: dict[str, int],
     team_id_to_name: Optional[dict[int, str]] = None,
 ) -> dict:
-    """Callback payload v1. Raw cumulative counters — percentages and
-    accuracy are derived by the receiver, not computed here.
+    """advance-stats body for POST /v1/pvt/tournament-duelz/{id}/advance-stats.
 
-    When team_id_to_name is given (resolved once per match from jersey colours),
-    the per-team keys carry the real team names (e.g. "frames_fca",
-    "passes_completed_orange"); otherwise they fall back to "team0"/"team1".
-    The "teams" block always records the id→name mapping that was applied so
-    the receiver can interpret the suffixes unambiguously."""
-    t0 = (team_id_to_name or {}).get(0, "team0")
-    t1 = (team_id_to_name or {}).get(1, "team1")
+    Raw cumulative counters as a flat, all-integer body — the server does a full
+    overwrite of the duel's advance_stats subdocument and derives percentages /
+    accuracy itself. Team mapping is positional: team id 0 → a, team id 1 → b
+    (so no jersey-colour name resolution is needed for the body).
+
+    match_id / half / minute / revision are not part of the body — they live on
+    the outbox columns and drive ordering and the per-duel URL. team_id_to_name
+    is accepted for call-site compatibility but is unused here."""
     return {
-        "match_id": match_id,
-        "half": half,
-        "minute": minute,
-        "revision": revision,
-        "teams": {"0": t0, "1": t1},
-        "cumulative": {
-            f"frames_{t0}":            sums["frames_team0"],
-            f"frames_{t1}":            sums["frames_team1"],
-            "frames_loose":            sums["frames_loose"],
-            "frames_oof":              sums["frames_oof"],
-            f"passes_completed_{t0}":  sums["passes_completed_t0"],
-            f"passes_completed_{t1}":  sums["passes_completed_t1"],
-            f"interceptions_{t0}":     sums["interceptions_t0"],
-            f"interceptions_{t1}":     sums["interceptions_t1"],
-            f"ball_lost_{t0}":         sums["ball_lost_t0"],
-            f"ball_lost_{t1}":         sums["ball_lost_t1"],
-        },
+        "frames_a":           sums["frames_team0"],
+        "frames_b":           sums["frames_team1"],
+        "frames_loose":       sums["frames_loose"],
+        "frames_oof":         sums["frames_oof"],
+        "passes_completed_a": sums["passes_completed_t0"],
+        "passes_completed_b": sums["passes_completed_t1"],
+        "interceptions_a":    sums["interceptions_t0"],
+        "interceptions_b":    sums["interceptions_t1"],
+        "ball_lost_a":        sums["ball_lost_t0"],
+        "ball_lost_b":        sums["ball_lost_t1"],
     }

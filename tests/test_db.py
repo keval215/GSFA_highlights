@@ -73,11 +73,13 @@ def test_correction_bumps_revision_and_cumulative_is_correct(conn, match_id):
     t0, t1, rev = cur.fetchone()
     assert (t0, t1, rev) == (90, 60, 1)
 
-    # Cumulative payload reflects the corrected minute 1: t0=170, t1=130 → 56.7/43.3
+    # Cumulative payload reflects the corrected minute 1: t0=170, t1=130
     sums = db.cumulative_read(conn, match_id, 1, 2)
     assert sums["frames_team0"] == 170
     assert sums["frames_team1"] == 130
-    assert payload["cumulative"]["possession_pct"] == {"team0": 56.7, "team1": 43.3}
+    # Flat advance-stats body: team 0 → a, team 1 → b.
+    assert payload["frames_a"] == 170
+    assert payload["frames_b"] == 130
 
 
 def test_events_and_outbox_written(conn, match_id):
@@ -91,7 +93,7 @@ def test_events_and_outbox_written(conn, match_id):
 
     pending = db.fetch_pending(conn, match_id)
     assert len(pending) == 1
-    assert pending[0].payload["cumulative"]["passes"]["team0"] == 1
+    assert pending[0].payload["passes_completed_a"] == 1
 
 
 def test_progress_advances(conn, match_id):

@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import time
+import warnings
 
 from service import config, db, notifier
 from service.blob import ClipBlobStore
@@ -186,12 +188,16 @@ class Worker:
 
 def main() -> None:
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
     # The Azure SDK's HTTP logging policy logs every request/response at INFO,
     # which floods the log on each 2 s queue poll and buries our own logs.
     logging.getLogger("azure").setLevel(logging.WARNING)
+    # Benign: boxmot cosine-distance on zero-vector embeddings (players without
+    # a SigLIP embedding) yields NaN, which boxmot masks. Don't spam the log.
+    warnings.filterwarnings("ignore", category=RuntimeWarning,
+                            message="invalid value encountered in divide")
     Worker().run_forever()
 
 

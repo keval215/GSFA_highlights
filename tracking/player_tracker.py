@@ -33,7 +33,7 @@ class PlayerTracker:
     def __init__(self, fps: float, cmc_method: str = "ecc") -> None:
         self.tracker = BotSort(
             reid_model         = None,
-            with_reid          = False,
+            with_reid          = True,
             cmc_method         = cmc_method,
             track_high_thresh  = 0.5,
             track_low_thresh   = 0.1,
@@ -54,7 +54,15 @@ class PlayerTracker:
         will have weaker appearance-based recovery.
         """
         if not players:
-            self.tracker.update(np.empty((0, 6), dtype=np.float32), frame)
+            # Pass an empty (not None) embs array so boxmot never falls back to
+            # its internal ReID model (which is None — we feed external SigLIP
+            # embeddings instead). embs=None on this path is what crashed with
+            # 'NoneType' object has no attribute 'get_features'.
+            self.tracker.update(
+                np.empty((0, 6), dtype=np.float32),
+                frame,
+                embs=np.empty((0, 1), dtype=np.float32),
+            )
             return
 
         # Build Nx6 dets array: x1, y1, x2, y2, conf, cls

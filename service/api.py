@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from typing import Optional
 
@@ -31,6 +32,13 @@ from service import config, db
 from service.blob import ClipBlobStore, blob_name
 from service.queueing import ClipQueue
 
+# Under `uvicorn service.api:app` the root logger has no handler, so our
+# gsfa.api INFO lines would be swallowed. Configure it ourselves.
+logging.basicConfig(
+    level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+
 log = logging.getLogger("gsfa.api")
 
 app = FastAPI(title="GSFA Highlights ingestion", version="1.0")
@@ -39,9 +47,21 @@ _blob:  Optional[ClipBlobStore] = None
 _queue: Optional[ClipQueue]     = None
 
 
+class _AccessLogFilter(logging.Filter):
+    """Drop uvicorn access-log lines for paths we don't serve — internet
+    scanners hammering /, /favicon.ico, /mcp, etc. spam 404s otherwise."""
+
+    _KEEP = ("/api/", "/health", "/metrics")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return any(p in msg for p in self._KEEP)
+
+
 @app.on_event("startup")
 def _startup() -> None:
     global _blob, _queue
+    logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
     _blob  = ClipBlobStore()
     _blob.ensure_container()
     _queue = ClipQueue()
@@ -79,12 +99,14 @@ async def post_clip(
 
     name = blob_name(match_id, half, minute)
     if already_processed or _blob.exists(name):
-        log.info("duplicate clip %s h%d m%d — skipped", match_id, half, minute)
+        log.debug("duplicate clip %s h%d m%d — skipped", match_id, half, minute)
         return {"accepted": True, "duplicate": True,
                 "match_id": match_id, "half": half, "minute": minute}
 
     _blob.upload_stream(name, file.file)
     _queue.enqueue(match_id, half, minute, name)
+    size_mb = (file.size / 1024**2) if file.size else 0.0
+    log.info("received clip %s h%d m%d (%.1f MB) — queued", match_id, half, minute, size_mb)
     return {"accepted": True, "match_id": match_id, "half": half, "minute": minute}
 
 

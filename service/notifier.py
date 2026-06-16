@@ -47,10 +47,10 @@ def send_pending_for_match(conn, match_id: str) -> None:
 
     headers = {"X-Super-Admin-Key": key}
     for row in db.fetch_pending(conn, match_id):
-        # Push-once: log the exact body being sent (real cumulative numbers),
-        # regardless of delivery outcome below.
-        log.info("advance-stats %s h%d m%d → POST %s body=%s",
-                 match_id, row.half, row.minute, url, json.dumps(row.payload))
+        # Full body at DEBUG (real cumulative numbers); concise confirmation at
+        # INFO only once the send succeeds (below).
+        log.debug("advance-stats %s h%d m%d → POST %s body=%s",
+                  match_id, row.half, row.minute, url, json.dumps(row.payload))
         attempts = row.attempts
         sent = False
         for i in range(config.CALLBACK_RETRIES):
@@ -77,6 +77,7 @@ def send_pending_for_match(conn, match_id: str) -> None:
                 time.sleep(config.CALLBACK_BACKOFF_BASE * (2 ** i))
 
         if sent:
+            log.info("advance-stats %s h%d m%d sent", match_id, row.half, row.minute)
             db.mark_sent(conn, row.outbox_id, attempts)
         else:
             db.mark_failed(conn, row.outbox_id, attempts)

@@ -52,8 +52,8 @@ def _startup() -> None:
 async def post_clip(
     file: UploadFile = File(...),
     match_id: str = Form(...),
-    half: int = Form(0),
-    minute: int = Form(0),
+    half: Optional[int] = Form(None),
+    minute: Optional[int] = Form(None),
     team0_name: Optional[str] = Form(None),
     team1_name: Optional[str] = Form(None),
     team0_colour: Optional[str] = Form(None),   # hex "#FF6600" or CSS name "orange"
@@ -70,9 +70,12 @@ async def post_clip(
     try:
         db.ensure_match(conn, match_id, team0_name, team1_name,
                         team0_colour, team1_colour)
-        already_processed = db.minute_exists(conn, match_id, half, minute)
+        resolved_half   = half   if half   is not None else 1
+        resolved_minute = minute if minute is not None else db.next_minute(conn, match_id, resolved_half)
+        already_processed = db.minute_exists(conn, match_id, resolved_half, resolved_minute)
     finally:
         conn.close()
+    half, minute = resolved_half, resolved_minute
 
     name = blob_name(match_id, half, minute)
     if already_processed or _blob.exists(name):

@@ -27,7 +27,7 @@ from service.stats import EventRow, MinuteRow, PriorCorrection, build_payload
 __all__ = [
     "EventRow", "MinuteRow", "PriorCorrection", "OutboxRow", "build_payload",
     "get_conn", "ensure_match", "get_team_specs", "get_match_progress",
-    "minute_exists", "cumulative_read", "write_clip_result",
+    "next_minute", "minute_exists", "cumulative_read", "write_clip_result",
     "fetch_pending", "mark_sent", "mark_failed",
 ]
 
@@ -106,6 +106,16 @@ def get_match_progress(conn: pyodbc.Connection, match_id: str) -> Optional[tuple
     )
     row = cur.fetchone()
     return (int(row[0]), int(row[1])) if row else None
+
+
+def next_minute(conn: pyodbc.Connection, match_id: str, half: int) -> int:
+    """Next sequential minute number for this match+half (1-based)."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT COALESCE(MAX(minute), 0) + 1 FROM minute_stats WHERE match_id = ? AND half = ?",
+        match_id, half,
+    )
+    return int(cur.fetchone()[0])
 
 
 def minute_exists(conn: pyodbc.Connection, match_id: str, half: int, minute: int) -> bool:

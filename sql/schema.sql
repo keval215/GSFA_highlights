@@ -12,9 +12,14 @@ CREATE TABLE matches (
   team1_colour          NVARCHAR(32)  NULL,
   last_half_processed   TINYINT       NOT NULL DEFAULT 1,
   last_minute_processed INT           NOT NULL DEFAULT 0,
+  next_clip_seq_h1      INT           NOT NULL DEFAULT 0,  -- atomic per-half upload counters
+  next_clip_seq_h2      INT           NOT NULL DEFAULT 0,
   created_at            DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
   updated_at            DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+-- Migration v2 (run once against existing DB before deploying updated service):
+-- ALTER TABLE matches ADD next_clip_seq_h1 INT NOT NULL DEFAULT 0, next_clip_seq_h2 INT NOT NULL DEFAULT 0;
 
 -- RAW counters only; one row per processed 60 s clip.
 -- Cumulative numbers are always computed on read (SUM over rows),

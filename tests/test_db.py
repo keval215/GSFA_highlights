@@ -11,6 +11,7 @@ Uses a throwaway match_id and cleans up after itself.
 
 import os
 import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -99,5 +100,28 @@ def test_events_and_outbox_written(conn, match_id):
 def test_progress_advances(conn, match_id):
     db.write_clip_result(conn, _row(match_id, 1, 1), None, [])
     db.write_clip_result(conn, _row(match_id, 1, 2), None, [])
-    half, minute, _ = db.get_match_progress(conn, match_id)
+    half, minute = db.get_match_progress(conn, match_id)
     assert (half, minute) == (1, 2)
+
+
+def test_claim_next_minute_is_atomic(match_id):
+    """Two threads racing claim_next_minute must receive distinct sequential values."""
+    results, errors = [], []
+
+    def claim():
+        try:
+            c = db.get_conn()
+            try:
+                results.append(db.claim_next_minute(c, match_id, 1))
+            finally:
+                c.close()
+        except Exception as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=claim)
+    t2 = threading.Thread(target=claim)
+    t1.start(); t2.start()
+    t1.join();  t2.join()
+
+    assert not errors, f"errors during concurrent claim: {errors}"
+    assert sorted(results) == [1, 2], f"expected [1, 2], got {sorted(results)}"

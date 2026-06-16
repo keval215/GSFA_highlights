@@ -71,7 +71,7 @@ async def post_clip(
         db.ensure_match(conn, match_id, team0_name, team1_name,
                         team0_colour, team1_colour)
         resolved_half   = half   if half   is not None else 1
-        resolved_minute = minute if minute is not None else db.next_minute(conn, match_id, resolved_half)
+        resolved_minute = minute if minute is not None else db.claim_next_minute(conn, match_id, resolved_half)
         already_processed = db.minute_exists(conn, match_id, resolved_half, resolved_minute)
     finally:
         conn.close()

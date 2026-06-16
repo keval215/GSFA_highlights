@@ -33,7 +33,7 @@ class PlayerTracker:
     def __init__(self, fps: float, cmc_method: str = "ecc") -> None:
         self.tracker = BotSort(
             reid_model         = None,
-            with_reid          = True,
+            with_reid          = False,
             cmc_method         = cmc_method,
             track_high_thresh  = 0.5,
             track_low_thresh   = 0.1,

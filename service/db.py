@@ -27,7 +27,7 @@ from service.stats import EventRow, MinuteRow, PriorCorrection, build_payload
 __all__ = [
     "EventRow", "MinuteRow", "PriorCorrection", "OutboxRow", "build_payload",
     "get_conn", "ensure_match", "get_team_specs", "get_match_progress",
-    "next_minute", "minute_exists", "cumulative_read", "write_clip_result",
+    "claim_next_minute", "minute_exists", "cumulative_read", "write_clip_result",
     "fetch_pending", "mark_sent", "mark_failed",
 ]
 
@@ -108,14 +108,25 @@ def get_match_progress(conn: pyodbc.Connection, match_id: str) -> Optional[tuple
     return (int(row[0]), int(row[1])) if row else None
 
 
-def next_minute(conn: pyodbc.Connection, match_id: str, half: int) -> int:
-    """Next sequential minute number for this match+half (1-based)."""
+def claim_next_minute(conn: pyodbc.Connection, match_id: str, half: int) -> int:
+    """Atomically claim the next sequential minute number for this match+half (1-based).
+
+    Uses UPDATE...OUTPUT so two concurrent API uploads serialize on the row
+    X-lock and always receive distinct values — safe for concurrent clip uploads.
+    """
+    if half not in (1, 2):
+        raise ValueError(f"half must be 1 or 2, got {half!r}")
+    col = "next_clip_seq_h1" if half == 1 else "next_clip_seq_h2"
     cur = conn.cursor()
     cur.execute(
-        "SELECT COALESCE(MAX(minute), 0) + 1 FROM minute_stats WHERE match_id = ? AND half = ?",
-        match_id, half,
+        f"UPDATE matches SET {col} = {col} + 1 OUTPUT INSERTED.{col} WHERE match_id = ?",
+        match_id,
     )
-    return int(cur.fetchone()[0])
+    row = cur.fetchone()
+    if row is None:
+        raise ValueError(f"match_id {match_id!r} not found in matches table")
+    conn.commit()
+    return int(row[0])
 
 
 def minute_exists(conn: pyodbc.Connection, match_id: str, half: int, minute: int) -> bool:

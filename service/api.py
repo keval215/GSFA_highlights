@@ -2,14 +2,14 @@
 service/api.py — FastAPI ingestion endpoint (no GPU).
 
 POST /api/clips  multipart/form-data:
-    file (60 s mp4), match_id, half, minute
-    [+ team0_name, team1_name, team0_colour, team1_colour]
+    file (60 s mp4), match_id
+    [+ half, minute, team0_name, team1_name, team0_colour, team1_colour]
   → upload blob clips/<match_id>/<half>_<minute>.mp4
   → enqueue {"match_id","half","minute","blob_path"}
   → 202 in ~1–2 s. Processing is never inline.
 
-Duplicate (match_id, half, minute) ⇒ 202 with "duplicate": true, clip
-skipped (the minute_stats PK makes the write path idempotent regardless).
+half and minute are optional (default 0). Duplicate (match_id, half, minute)
+⇒ 202 with "duplicate": true, clip skipped.
 
 GET /health  — api liveness + worker heartbeat + GPU visibility.
 GET /metrics — queue depths, last clip seconds, seconds-behind-live, GPU mem.
@@ -52,8 +52,8 @@ def _startup() -> None:
 async def post_clip(
     file: UploadFile = File(...),
     match_id: str = Form(...),
-    half: int = Form(...),
-    minute: int = Form(...),
+    half: int = Form(0),
+    minute: int = Form(0),
     team0_name: Optional[str] = Form(None),
     team1_name: Optional[str] = Form(None),
     team0_colour: Optional[str] = Form(None),   # hex "#FF6600" or CSS name "orange"
@@ -62,8 +62,6 @@ async def post_clip(
     # Basic hygiene only (no auth in v1 — NSG restricts port 8000).
     if file.content_type not in ("video/mp4", "application/octet-stream", None):
         raise HTTPException(415, f"unsupported content type: {file.content_type}")
-    if half < 1 or minute < 1:
-        raise HTTPException(422, "half and minute must be >= 1")
     if file.size is not None and file.size > config.MAX_UPLOAD_GB * 1024**3:
         raise HTTPException(413, f"clip exceeds {config.MAX_UPLOAD_GB} GB cap")
 

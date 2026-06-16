@@ -12,8 +12,7 @@ API_BASE  = "https://aiff.clubduelz.in"
 CLIP_PATH = r"C:\Users\Admin\Downloads\Video Project_1min.mp4"
 
 MATCH_ID = "test_match_001"
-HALF     = 1
-MINUTE   = 13
+
 
 with open(CLIP_PATH, "rb") as f:
     response = requests.post(
@@ -21,8 +20,6 @@ with open(CLIP_PATH, "rb") as f:
         files={"file": ("clip.mp4", f, "video/mp4")},
         data={
             "match_id":     MATCH_ID,
-            "half":         str(HALF),
-            "minute":       str(MINUTE),
             "team0_name":   "RFC",
             "team0_colour": "#0000FF",
             "team1_name":   "BFA",

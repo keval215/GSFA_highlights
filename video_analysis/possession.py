@@ -2,7 +2,7 @@
 video_analysis/possession.py — Ball possession analysis for GSFA football matches.
 
 Pipeline:
-  Detect (RF-DETR ball + YOLOv11 players) -> SigLIP team -> GK -> BoT-SORT (+GMC)
+  Detect (unified YOLOv11m: players + ball) -> SigLIP team -> GK -> BoT-SORT (+GMC)
   -> BallTracker (Kalman smoothing) -> CarrierEngine (bbox-relative foot-zone)
   -> PassEventTracker (release / travel / reception phases)
   -> PossessionStats (strict denominator)
@@ -37,12 +37,14 @@ from tracking.player_tracker import PlayerTracker
 # CONFIGURATION
 # ---------------------------------------------------------------------------
 
-BALL_MODEL_WEIGHTS = r"C:\Users\Admin\OneDrive\Desktop\CZ\gsfa_ball_detection.pth"
-VIDEO_PATH         = r"C:\Users\Admin\Downloads\Video Project_1min.mp4"
+PLAYER_MODEL_WEIGHTS = r"C:\Users\Admin\OneDrive\Desktop\CZ\aiff_v1.pt"
+DEVICE               = "cuda"   # CUDA is available locally; "cpu" works but is slow at imgsz 960
+VIDEO_PATH         = r"C:\Users\Admin\Downloads\aiff_1\1.mp4"
 OUTPUT_PATH        = r"data/output/possession_output.mp4"
 
-BALL_CLASS_ID  = 1
-BALL_CONF      = 0.25      # lowered from 0.35; Kalman gates false positives
+# Ball detection now comes from the unified YOLOv11m model via PlayerDetector
+# (class "ball", gated by PlayerDetector.ball_conf). best_ball() picks the best
+# one per frame; the Kalman tracker below still gates false positives.
 
 # BallTracker
 KALMAN_COAST_FRAMES   = 12         # emit predicted position for up to N frames
@@ -88,65 +90,22 @@ class BallDetection:
     confidence: float
 
 
-class BallDetector:
-    def __init__(
-        self,
-        weights:       str   = BALL_MODEL_WEIGHTS,
-        ball_class_id: int   = BALL_CLASS_ID,
-        conf:          float = BALL_CONF,
-    ) -> None:
-        from rfdetr import RFDETRMedium
-        print(f"[BallDetector] Loading: {weights}")
-        self.model = RFDETRMedium.from_checkpoint(weights, num_classes=2, resolution=576)
-        # Fuse/compile the graph for inference; no-op on backends where it is
-        # unsupported. Benefits both the service and the local pipeline.
-        try:
-            import torch
-            _dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-            self.model.optimize_for_inference(dtype=_dtype)
-        except Exception as exc:  # pragma: no cover - backend dependent
-            print(f"[BallDetector] optimize_for_inference skipped: {exc}")
-        self.ball_class_id = ball_class_id
-        self.conf          = conf
+def best_ball(fd: FrameDetections) -> Optional[BallDetection]:
+    """Pick the single highest-confidence ball from a frame's detections.
 
-    def _parse_dets(self, dets) -> Optional[BallDetection]:
-        """Pick the highest-confidence ball detection from an sv.Detections."""
-        if dets is None or len(dets) == 0:
-            return None
-        mask = dets.class_id == self.ball_class_id
-        if not np.any(mask):
-            return None
-        confs = dets.confidence[mask]
-        boxes = dets.xyxy[mask]
-        best  = int(np.argmax(confs))
-        x1, y1, x2, y2 = (int(v) for v in boxes[best])
-        return BallDetection(
-            bbox       = (x1, y1, x2, y2),
-            centre     = ((x1 + x2) // 2, (y1 + y2) // 2),
-            confidence = float(confs[best]),
-        )
-
-    def detect(self, frame: np.ndarray) -> Optional[BallDetection]:
-        pil  = PILImage.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        with torch.inference_mode():
-            dets = self.model.predict(pil, threshold=self.conf)
-        return self._parse_dets(dets)
-
-    def detect_batch(self, frames: list[np.ndarray]) -> list[Optional[BallDetection]]:
-        """Detect the ball in a list of BGR frames. Tries a single batched
-        predict; falls back to a per-frame loop if the installed rfdetr does
-        not accept list input. Output is identical to per-frame detect()."""
-        if not frames:
-            return []
-        pils = [PILImage.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)) for f in frames]
-        with torch.inference_mode():
-            try:
-                out = self.model.predict(pils, threshold=self.conf)
-                if not isinstance(out, (list, tuple)):
-                    raise TypeError("rfdetr predict did not return a per-image list")
-            except Exception:
-                out = [self.model.predict(p, threshold=self.conf) for p in pils]
-        return [self._parse_dets(d) for d in out]
+    The unified YOLOv11m model emits ball detections as `Detection` objects in
+    `fd.balls` (already gated by PlayerDetector.ball_conf). This adapter selects
+    the best one and converts it to the `BallDetection` type the BallTracker /
+    CarrierEngine consume. Returns None when no ball was detected this frame.
+    """
+    if not fd.balls:
+        return None
+    d = max(fd.balls, key=lambda x: x.confidence)
+    return BallDetection(
+        bbox       = d.bbox,
+        centre     = d.centre_point,
+        confidence = d.confidence,
+    )
 
 
 class BallTracker:
@@ -761,7 +720,7 @@ class PossessionStats:
 # Index 0 = team0 (blue), 1 = team1 (red), 2 = unclassified (grey)
 _PALETTE = sv.ColorPalette.from_hex(["#0050FF", "#FF5000", "#A0A0A0"])
 
-_ellipse_ann  = sv.EllipseAnnotator(color=_PALETTE, thickness=2)
+_ellipse_ann  = sv.EllipseAnnotator(color=_PALETTE, thickness=1)
 _triangle_ann = sv.TriangleAnnotator(
     color=sv.Color.from_hex("#00FFFF"), base=16, height=16,
     color_lookup=sv.ColorLookup.INDEX,
@@ -769,9 +728,9 @@ _triangle_ann = sv.TriangleAnnotator(
 _label_ann = sv.LabelAnnotator(
     color          = _PALETTE,
     text_color     = sv.Color.WHITE,
-    text_scale     = 0.38,
+    text_scale     = 0.32,
     text_thickness = 1,
-    text_padding   = 3,
+    text_padding   = 2,
 )
 
 
@@ -867,8 +826,7 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH) -> None:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
     print("[Possession] Initialising models …")
-    player_det     = PlayerDetector()
-    ball_det_model = BallDetector(BALL_MODEL_WEIGHTS)
+    player_det = PlayerDetector(model_path=PLAYER_MODEL_WEIGHTS, device=DEVICE)   # unified model: players + ball + refs + posts
 
     team_clf = GSFATeamClassifier()
     team_clf.fit_from_video_or_load(video_path, player_det)
@@ -888,20 +846,31 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH) -> None:
     warnings.filterwarnings("ignore")
     os.environ["TQDM_DISABLE"] = "1"
 
-    frame_step = max(1, round(fps / TARGET_PROCESS_FPS))
+    frame_step = 1   # process & render every native frame for smooth output
     max_frame  = int(fps * PROCESS_DURATION_SEC)
-    eff_fps    = fps / frame_step
+    eff_fps    = fps / frame_step   # == native fps
+
+    # The event/Kalman constants below are calibrated for 15 fps real-time
+    # durations (1 frame ~= 67 ms). Now that we process at native fps, rescale
+    # the frame-count thresholds by eff_fps/15 so the real-time behaviour holds.
+    fps_scale = eff_fps / 15.0
+    _sc = lambda n: max(1, round(n * fps_scale))
 
     tracker      = PlayerTracker(fps=fps)
-    ball_tracker = BallTracker()
-    carrier_eng  = CarrierEngine()
-    pass_track   = PassEventTracker()   # constants are in 15fps processed-frame units
+    ball_tracker = BallTracker(coast_frames=_sc(KALMAN_COAST_FRAMES))  # gate_sigma unchanged
+    carrier_eng  = CarrierEngine(hysteresis_n=_sc(CARRIER_HYSTERESIS_N))
+    pass_track   = PassEventTracker(
+        release_sustain  = _sc(RELEASE_SUSTAIN_R),
+        reception_settle = _sc(RECEPTION_SETTLE_C),
+        travel_min_gap   = _sc(TRAVEL_MIN_GAP),
+        travel_timeout   = _sc(TRAVEL_TIMEOUT_FRAMES),
+    )
     stats        = PossessionStats()
 
     writer = cv2.VideoWriter(
         out_path,
         cv2.VideoWriter_fourcc(*"mp4v"),
-        TARGET_PROCESS_FPS,
+        eff_fps,
         (W_vid, H_vid),
     )
 
@@ -930,7 +899,7 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH) -> None:
         gk_det.classify(player_dets)
         tracker.update(frame, player_dets.players)
 
-        raw_ball         = ball_det_model.detect(frame)
+        raw_ball         = best_ball(player_dets)
         ball_state, ball = ball_tracker.update(raw_ball)
 
         carrier = carrier_eng.update(player_dets.players, ball_state, ball)
@@ -965,7 +934,7 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH) -> None:
 
         # --- Resolved-event logs ---
         for evt in pass_track.events[prev_n_evts:]:
-            t_evt = evt.end_frame / TARGET_PROCESS_FPS
+            t_evt = evt.end_frame / eff_fps
             if evt.kind == EVT_COMPLETED:
                 print(
                     f"[{t_evt:.2f}s] PASS COMPLETED    "

@@ -32,7 +32,6 @@ from team_classifier.team_classifier import GSFATeamClassifier, TeamSpec
 from tracking.player_tracker import PlayerTracker
 from video_analysis import possession as vp
 from video_analysis.possession import (
-    BallDetector,
     BallTracker,
     CarrierEngine,
     PassEventTracker,
@@ -60,19 +59,17 @@ _TRAVEL_PHASES = (vp.PHASE_CAND_REL, vp.PHASE_TRAVEL, vp.PHASE_CAND_RCV)
 
 @dataclass
 class ModelBundle:
-    player_det: PlayerDetector
-    ball_det:   BallDetector
+    player_det: PlayerDetector  # unified YOLOv11m: players + ball + refs + posts
 
     @staticmethod
     def load() -> "ModelBundle":
-        log.info("Loading models (player=%s, ball=%s, device=%s)",
-                 config.player_weights(), config.ball_weights(), config.DEVICE)
+        log.info("Loading model (player=%s, device=%s)",
+                 config.player_weights(), config.DEVICE)
         return ModelBundle(
             player_det=PlayerDetector(
                 model_path=config.player_weights(),
                 device=config.DEVICE,
             ),
-            ball_det=BallDetector(weights=config.ball_weights()),
         )
 
 

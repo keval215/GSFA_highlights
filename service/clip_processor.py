@@ -4,8 +4,8 @@ pipeline classes (video_analysis/, detectors/, team_classifier/,
 tracking/ — no CV logic rewritten, no rendering).
 
 Frames (15 fps stride) are processed in windows of CLIP_BATCH_WINDOW:
-    Pass 1 (batched GPU, stateless): player detect + SigLIP team embed +
-        ball detect for the whole window in one call each.
+    Pass 1 (batched GPU, stateless): unified detect (players + ball) +
+        SigLIP team embed for the whole window in one call each.
     Pass 2 (strictly sequential, stateful): track → ball Kalman →
         CarrierEngine → PassEventTracker → bucket the possession label and
         any retroactive adjustments into this minute's counters.
@@ -28,6 +28,7 @@ import cv2
 
 from service import config
 from service.session import MatchSession
+from video_analysis.possession import best_ball
 from service.stats import (
     KIND_MAP,
     ClipResult,
@@ -87,21 +88,10 @@ def process_clip(
         session.team_clf.classify_batch(win_frames, dets_list)
         p2 = time.perf_counter(); t["team_clf"] += (p2 - p1) * 1000
 
-        # Ball detection on a stride: run RF-DETR only every BALL_DETECT_EVERY-th
-        # processed frame; off-frames get None and the ball Kalman coasts. base is
-        # session.proc_idx at window start (Pass 2 hasn't incremented it yet), so
-        # the stride is continuous across window boundaries.
-        stride = config.BALL_DETECT_EVERY
-        if stride == 1:
-            balls = session.models.ball_det.detect_batch(win_frames)
-        else:
-            base    = session.proc_idx
-            det_pos = [k for k in range(len(win_frames)) if (base + k) % stride == 0]
-            sub     = (session.models.ball_det.detect_batch([win_frames[k] for k in det_pos])
-                       if det_pos else [])
-            balls   = [None] * len(win_frames)
-            for k, b in zip(det_pos, sub):
-                balls[k] = b
+        # Ball now comes from the same unified detection pass: pick the best ball
+        # per frame from dets_list. No separate model and no stride — the ball is
+        # available every processed frame, which improves Kalman continuity.
+        balls = [best_ball(d) for d in dets_list]
         p3 = time.perf_counter(); t["ball_det"] += (p3 - p2) * 1000
 
         # --- Pass 2: strictly sequential, stateful logic ----------------

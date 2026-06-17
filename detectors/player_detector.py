@@ -1,10 +1,15 @@
 """
-detectors/player_detector.py — GSFA Player Detection Module
+detectors/player_detector.py — GSFA Detection Module
 
-Wraps GSFA_PLAYER_DETECTION.pt (YOLOv11, 3 classes):
-    0 → active_player
-    1 → goal_post
-    2 → referee
+Wraps the unified YOLOv11m model (trained at imgsz 960, 4 classes):
+    0 → active_players (mapped internally to "active_player")
+    1 → ball
+    2 → goal_post
+    3 → referee
+
+The ball class is now produced by this same model; there is no separate
+RF-DETR ball detector. Use video_analysis.possession.best_ball(frame_dets)
+to pick the single best ball from a frame's detections.
 
 Import:
     from detectors.player_detector import PlayerDetector
@@ -40,7 +45,7 @@ from ultralytics import YOLO
 class Detection:
     """Single detected object in one frame."""
     class_id:     int
-    class_name:   str                        # "active_player" | "referee" | "goal_post"
+    class_name:   str                        # "active_player" | "ball" | "referee" | "goal_post"
     bbox:         tuple[int, int, int, int]  # (x1, y1, x2, y2)
     confidence:   float
     foot_point:   tuple[int, int]            # bottom-centre — use for ground-plane projection
@@ -59,6 +64,7 @@ class FrameDetections:
     players:     list[Detection] = field(default_factory=list)
     referees:    list[Detection] = field(default_factory=list)
     goal_posts:  list[Detection] = field(default_factory=list)
+    balls:       list[Detection] = field(default_factory=list)
     all:         list[Detection] = field(default_factory=list)
 
 
@@ -70,24 +76,39 @@ class PlayerDetector:
 
     MODEL_PATH = r"C:\Users\Admin\OneDrive\Desktop\CZ\GSFA_PLAYER_DETECTION.pt"
 
+    # Unified YOLOv11m id → internal class name. The model's data.yaml names the
+    # player class "active_players" (plural); we keep the singular "active_player"
+    # here so all downstream consumers (team classifier, possession, draw) stay
+    # unchanged. NOTE: ids shifted vs the old 3-class model (goal_post 1→2,
+    # referee 2→3) — ball is the new id 1.
     CLASS_NAMES: dict[int, str] = {
         0: "active_player",
-        1: "goal_post",
-        2: "referee",
+        1: "ball",
+        2: "goal_post",
+        3: "referee",
     }
 
     def __init__(
         self,
         model_path: str = MODEL_PATH,
-        conf: float = 0.50,
+        conf: float = 0.20,
         device: str = "cpu",
+        *,
+        player_conf: float = 0.50,
+        ball_conf: float = 0.25,
     ) -> None:
-        self.conf   = conf
+        # `conf` is the floor passed to the model call. Per-class thresholds are
+        # then applied in _parse: players/refs/posts keep the historical 0.50 gate,
+        # while the small/fast ball is admitted down to ball_conf. The single model
+        # runs one conf per call, so the floor must be <= min(player_conf, ball_conf).
+        self.conf        = conf
+        self.player_conf = player_conf
+        self.ball_conf   = ball_conf
         self.device = device
         self.model  = YOLO(model_path)
         # fp16 on CUDA for ~2x throughput on T4; CPU path stays fp32.
         self.half   = (device == "cuda")
-        self.imgsz  = 640
+        self.imgsz  = 960  # match the yolov11m training resolution (was 640)
 
     # ------------------------------------------------------------------
     # Single frame
@@ -203,6 +224,7 @@ class PlayerDetector:
             "active_player": (0, 255, 0),
             "referee":       (0, 215, 255),
             "goal_post":     (255, 215, 0),
+            "ball":          (0, 0, 255),
         }
         out = frame.copy()
         for det in detections.all:
@@ -224,22 +246,29 @@ class PlayerDetector:
         if r.boxes is None or len(r.boxes) == 0:
             return fd
         for box in r.boxes:
-            cid = int(box.cls[0].cpu().numpy())
-            x1, y1, x2, y2 = (int(v) for v in box.xyxy[0].cpu().numpy())
+            cid  = int(box.cls[0].cpu().numpy())
             conf = float(box.conf[0].cpu().numpy())
+            name = self.CLASS_NAMES.get(cid, f"cls_{cid}")
+            # Per-class confidence gate: ball gets a lower bar than everyone else.
+            min_conf = self.ball_conf if name == "ball" else self.player_conf
+            if conf < min_conf:
+                continue
+            x1, y1, x2, y2 = (int(v) for v in box.xyxy[0].cpu().numpy())
             det  = Detection(
                 class_id     = cid,
-                class_name   = self.CLASS_NAMES.get(cid, f"cls_{cid}"),
+                class_name   = name,
                 bbox         = (x1, y1, x2, y2),
                 confidence   = conf,
                 foot_point   = ((x1 + x2) // 2, y2),
                 centre_point = ((x1 + x2) // 2, (y1 + y2) // 2),
             )
             fd.all.append(det)
-            if det.class_name == "active_player":
+            if name == "active_player":
                 fd.players.append(det)
-            elif det.class_name == "referee":
+            elif name == "referee":
                 fd.referees.append(det)
-            elif det.class_name == "goal_post":
+            elif name == "goal_post":
                 fd.goal_posts.append(det)
+            elif name == "ball":
+                fd.balls.append(det)
         return fd

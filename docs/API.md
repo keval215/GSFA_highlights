@@ -29,8 +29,7 @@ Set in `/etc/gsfa-highlights.env` (loaded via docker-compose `env_file`).
 |---|---|---|---|
 | `AZURE_STORAGE_CONNECTION_STRING` | yes | — | Blob + Queue storage connection string |
 | `SQL_CONN_STR` | yes | — | pyodbc connection string for Azure SQL `gsfa_stats` |
-| `PLAYER_WEIGHTS` | yes | — | Absolute VM path to YOLO player-detector weights |
-| `BALL_WEIGHTS` | yes | — | Absolute VM path to RF-DETR ball-detector weights |
+| `PLAYER_WEIGHTS` | yes | — | Absolute VM path to the unified YOLOv11m weights (players + ball + refs + posts) |
 | `CALLBACK_URL` | no | `""` | Base origin of the main app (e.g. `https://dev-server.clubduelz.in`), no path. The worker appends `/v1/pvt/tournament-duelz/{match_id}/advance-stats`. Empty = disable |
 | `SUPER_ADMIN_KEY` | no | `""` | `X-Super-Admin-Key` sent with each advance-stats POST. Empty = disable callback |
 | `CALLBACK_RETRIES` | no | `3` | Max delivery attempts per outbox row before it is marked `failed` |

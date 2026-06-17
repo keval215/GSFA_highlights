@@ -8,8 +8,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1
 
 # Stable Python 3.11 via deadsnakes — Ubuntu 22.04's own python3.11 is 3.11.0rc1
-# (a release candidate), and torch.jit.script segfaults on that RC interpreter
-# (rfdetr runs @torch.jit.script at import time). deadsnakes ships stable 3.11.x.
+# (a release candidate). A pre-release interpreter is not safe for production:
+# torch.jit.script has been observed to segfault on that RC. deadsnakes ships a
+# stable 3.11.x, so we install from it regardless.
 #
 # + ODBC Driver 18 for SQL Server (pyodbc) + git (sports pkg)
 # libgl1/libglib2.0-0/libxcb1/... : OpenCV native deps (full opencv-python is

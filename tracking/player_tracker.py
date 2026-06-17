@@ -26,6 +26,12 @@ from detectors.player_detector import Detection
 # stops well short of long ReID territory.
 _TRACK_BUFFER_FRAMES_AT_30FPS = 60
 
+# SigLIP embedding width produced by GSFATeamClassifier (mean of SigLIP's
+# last_hidden_state; google/siglip-base-patch16-224 → hidden_size=768). Used as
+# the fallback embs width on frames where NO detection carried an embedding, so
+# boxmot still receives a real (all-zeros) appearance matrix instead of None.
+_SIGLIP_EMB_DIM = 768
+
 
 class PlayerTracker:
     """BoT-SORT wrapper that consumes external SigLIP embeddings."""
@@ -77,13 +83,19 @@ class PlayerTracker:
                 emb_dim = int(p.embedding.shape[0])
                 break
 
+        # When NO detection in this frame carried a SigLIP embedding, fall back
+        # to the known SigLIP width and still hand boxmot an all-zeros embs
+        # matrix rather than None. embs=None makes boxmot reach for its internal
+        # ReID model (we built it with reid_model=None) → 'NoneType' object has
+        # no attribute 'get_features'. All-zero appearance vectors give a
+        # constant appearance distance, so the frame degrades to motion-only
+        # association — the documented behaviour for embedding-less detections.
         if emb_dim is None:
-            embs = None
-        else:
-            embs = np.zeros((len(players), emb_dim), dtype=np.float32)
-            for i, p in enumerate(players):
-                if p.embedding is not None:
-                    embs[i] = p.embedding.astype(np.float32)
+            emb_dim = _SIGLIP_EMB_DIM
+        embs = np.zeros((len(players), emb_dim), dtype=np.float32)
+        for i, p in enumerate(players):
+            if p.embedding is not None:
+                embs[i] = p.embedding.astype(np.float32)
 
         out = self.tracker.update(dets, frame, embs=embs)
         out_arr = np.asarray(out)

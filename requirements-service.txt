@@ -5,7 +5,6 @@
 opencv-python-headless
 ultralytics
 supervision
-rfdetr
 boxmot
 joblib
 umap-learn

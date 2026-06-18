@@ -21,23 +21,21 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from service import config, db
+from service import config, db, logging_setup
 from service.blob import ClipBlobStore, blob_name
 from service.queueing import ClipQueue
 
-# Under `uvicorn service.api:app` the root logger has no handler, so our
-# gsfa.api INFO lines would be swallowed. Configure it ourselves.
-logging.basicConfig(
-    level=getattr(logging, os.environ.get("LOG_LEVEL", "INFO").upper(), logging.INFO),
-    format="%(asctime)s %(name)s %(levelname)s %(message)s",
-)
+# Under `uvicorn service.api:app` the root logger has no handler, so our gsfa.api
+# lines would be swallowed. Configure it ourselves (IST timestamps, azure HTTP
+# logging silenced — shared with the worker process).
+logging_setup.configure("api")
 
 log = logging.getLogger("gsfa.api")
 
@@ -56,6 +54,26 @@ class _AccessLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
         return any(p in msg for p in self._KEEP)
+
+
+@app.exception_handler(RequestValidationError)
+async def _on_validation_error(request: Request, exc: RequestValidationError):
+    """FastAPI's built-in validation (missing match_id/file, non-int half/minute,
+    …) otherwise returns a bare 422 with no reason in the log. Log the precise
+    field+reason and still return the detailed body to the caller."""
+    log.warning("invalid POST %s — %s", request.url.path, exc.errors())
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
+@app.exception_handler(HTTPException)
+async def _on_http_error(request: Request, exc: HTTPException):
+    """Surface the *reason* for our explicit 4xx rejections (415/413/422) in the
+    gsfa.api log, not just the uvicorn status line. 404 etc. stay quiet."""
+    if exc.status_code >= 400 and exc.status_code != 404:
+        log.warning("rejected %s — HTTP %d: %s",
+                    request.url.path, exc.status_code, exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail},
+                        headers=getattr(exc, "headers", None))
 
 
 @app.on_event("startup")
@@ -84,6 +102,10 @@ async def post_clip(
         raise HTTPException(415, f"unsupported content type: {file.content_type}")
     if file.size is not None and file.size > config.MAX_UPLOAD_GB * 1024**3:
         raise HTTPException(413, f"clip exceeds {config.MAX_UPLOAD_GB} GB cap")
+    if half is not None and half < 1:
+        raise HTTPException(422, f"half must be >= 1, got {half}")
+    if minute is not None and minute < 1:
+        raise HTTPException(422, f"minute must be >= 1, got {minute}")
 
     # First clip auto-creates the match; later clips fill missing metadata.
     conn = db.get_conn()

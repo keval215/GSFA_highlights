@@ -2,7 +2,8 @@
 service/queueing.py — Azure Queue Storage wrapper.
 
 One message per clip:
-    {"match_id": str, "half": int, "minute": int, "blob_path": str}
+    {"match_id": str, "half": int, "minute": int, "blob_path": str,
+     "clip_duration_seconds": float}
 
 Azure Queue Storage is approximately FIFO, so the worker enforces ordering
 itself (see worker.py); this module only provides enqueue/dequeue/poison
@@ -28,6 +29,7 @@ class ClipMessage:
     half:      int
     minute:    int
     blob_path: str
+    clip_duration_seconds: float = 60.0
     # How many times the worker deferred this message because it arrived
     # out of order (carried in the message body across re-sends).
     ordering_retries: int = 0
@@ -58,12 +60,14 @@ class ClipQueue:
         half: int,
         minute: int,
         blob_path: str,
+        clip_duration_seconds: float,
     ) -> None:
         self._queue.send_message(json.dumps({
             "match_id": match_id,
             "half": half,
             "minute": minute,
             "blob_path": blob_path,
+            "clip_duration_seconds": clip_duration_seconds,
         }))
 
     # --- consumer (worker) ---
@@ -87,6 +91,7 @@ class ClipQueue:
                 half             = int(body["half"]),
                 minute           = int(body["minute"]),
                 blob_path        = body["blob_path"],
+                clip_duration_seconds = float(body.get("clip_duration_seconds", 60.0)),
                 ordering_retries = int(body.get("ordering_retries", 0)),
                 message_id       = m.id,
                 pop_receipt      = m.pop_receipt,
@@ -106,6 +111,7 @@ class ClipQueue:
             json.dumps({
                 "match_id": msg.match_id, "half": msg.half,
                 "minute": msg.minute, "blob_path": msg.blob_path,
+                "clip_duration_seconds": msg.clip_duration_seconds,
                 "ordering_retries": msg.ordering_retries + 1,
             }),
             visibility_timeout=delay_seconds,
@@ -115,6 +121,7 @@ class ClipQueue:
         self._poison.send_message(json.dumps({
             "match_id": msg.match_id, "half": msg.half,
             "minute": msg.minute, "blob_path": msg.blob_path,
+            "clip_duration_seconds": msg.clip_duration_seconds,
         }))
         self._queue.delete_message(msg.message_id, msg.pop_receipt)
 

@@ -3,9 +3,10 @@ service/api.py — FastAPI ingestion endpoint (no GPU).
 
 POST /api/clips  multipart/form-data:
     file (60 s mp4), match_id
-    [+ half, minute, team0_name, team1_name, team0_colour, team1_colour]
+        [+ clip_duration_seconds, half, minute, team0_name, team1_name,
+             team0_colour, team1_colour]
   → upload blob clips/<match_id>/<half>_<minute>.mp4
-  → enqueue {"match_id","half","minute","blob_path"}
+    → enqueue {"match_id","half","minute","blob_path","clip_duration_seconds"}
   → 202 in ~1–2 s. Processing is never inline.
 
 half and minute are optional (default 0). Duplicate (match_id, half, minute)
@@ -90,6 +91,7 @@ def _startup() -> None:
 async def post_clip(
     file: UploadFile = File(...),
     match_id: str = Form(...),
+    clip_duration_seconds: float = Form(...),
     half: Optional[int] = Form(None),
     minute: Optional[int] = Form(None),
     team0_name: Optional[str] = Form(None),
@@ -102,6 +104,8 @@ async def post_clip(
         raise HTTPException(415, f"unsupported content type: {file.content_type}")
     if file.size is not None and file.size > config.MAX_UPLOAD_GB * 1024**3:
         raise HTTPException(413, f"clip exceeds {config.MAX_UPLOAD_GB} GB cap")
+    if clip_duration_seconds <= 0:
+        raise HTTPException(422, f"clip_duration_seconds must be > 0, got {clip_duration_seconds}")
     if half is not None and half < 1:
         raise HTTPException(422, f"half must be >= 1, got {half}")
     if minute is not None and minute < 1:
@@ -126,7 +130,7 @@ async def post_clip(
                 "match_id": match_id, "half": half, "minute": minute}
 
     _blob.upload_stream(name, file.file)
-    _queue.enqueue(match_id, half, minute, name)
+    _queue.enqueue(match_id, half, minute, name, clip_duration_seconds)
     size_mb = (file.size / 1024**2) if file.size else 0.0
     log.info("received clip %s h%d m%d (%.1f MB) — queued", match_id, half, minute, size_mb)
     return {"accepted": True, "match_id": match_id, "half": half, "minute": minute}

@@ -45,6 +45,7 @@ def process_clip(
     clip_path: str,
     half: int,
     minute: int,
+    clip_duration_seconds: float,
     clip_blob_path: str | None = None,
 ) -> ClipResult:
     if session.team_clf is None:
@@ -57,8 +58,6 @@ def process_clip(
         raise IOError(f"process_clip: cannot open {clip_path}")
 
     fps        = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
-    clip_duration_seconds = round(frame_count / fps, 2) if fps > 0 and frame_count > 0 else None
     frame_step = max(1, round(fps / config.TARGET_PROCESS_FPS))
     window_k   = max(1, config.CLIP_BATCH_WINDOW)
 

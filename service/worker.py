@@ -123,6 +123,7 @@ class Worker:
 
         # --- Process the clip with cross-clip state
         result = process_clip(session, str(clip_path), msg.half, msg.minute,
+                              msg.clip_duration_seconds,
                               clip_blob_path=msg.blob_path)
 
         # --- One SQL transaction (minute row + correction + events + outbox)

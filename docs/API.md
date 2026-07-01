@@ -61,6 +61,7 @@ Upload a 60-second clip for processing. Returns immediately (~1–2 s); processi
 |---|---|---|---|
 | `file` | binary (mp4) | yes | The clip file. `video/mp4` or `application/octet-stream`. Max `MAX_UPLOAD_GB` GB. |
 | `match_id` | string | yes | Unique match identifier. Auto-creates the match row on first clip. |
+| `clip_duration_seconds` | number | yes | Duration supplied by the client for this clip, stored directly in SQL. |
 | `half` | integer | yes | Match half (>= 1). |
 | `minute` | integer | yes | Minute within the half (>= 1). |
 | `team0_name` | string | no | Display name for team 0 (e.g. `"FCA"`). Used in callback payload keys. |
@@ -69,6 +70,7 @@ Upload a 60-second clip for processing. Returns immediately (~1–2 s); processi
 | `team1_colour` | string | no | Jersey colour for team 1. |
 
 Team name/colour fields on the first clip initialise the match; subsequent clips only fill in values that are still `NULL` (later calls cannot overwrite).
+The server stores `clip_duration_seconds` exactly as sent by the client.
 
 **202 Accepted — new clip enqueued:**
 

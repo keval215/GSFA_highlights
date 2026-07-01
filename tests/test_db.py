@@ -86,7 +86,12 @@ def test_correction_bumps_revision_and_cumulative_is_correct(conn, match_id):
 def test_events_and_outbox_written(conn, match_id):
     events = [EventRow(half=1, minute=1, frame_idx=42, kind="pass",
                        from_team=0, to_team=0, from_track=3, to_track=7, travel_frames=5)]
-    db.write_clip_result(conn, _row(match_id, 1, 1, passes_completed_t0=1), None, events)
+    db.write_clip_result(
+        conn,
+        _row(match_id, 1, 1, passes_completed_t0=1, clip_duration_seconds=60.0),
+        None,
+        events,
+    )
 
     cur = conn.cursor()
     cur.execute("SELECT kind FROM events WHERE match_id = ?", match_id)
@@ -95,6 +100,21 @@ def test_events_and_outbox_written(conn, match_id):
     pending = db.fetch_pending(conn, match_id)
     assert len(pending) == 1
     assert pending[0].payload["passes_completed_a"] == 1
+
+
+def test_clip_duration_seconds_is_persisted(conn, match_id):
+    db.write_clip_result(
+        conn,
+        _row(match_id, 1, 1, clip_duration_seconds=63.25),
+        None,
+        [],
+    )
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT clip_duration_seconds FROM minute_stats WHERE match_id = ? AND half = 1 AND minute = 1",
+        match_id,
+    )
+    assert float(cur.fetchone()[0]) == 63.25
 
 
 def test_progress_advances(conn, match_id):

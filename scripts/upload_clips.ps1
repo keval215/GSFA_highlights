@@ -28,8 +28,9 @@ if (-not $durationText) {
     throw "Could not read video duration with ffprobe. Make sure ffmpeg and ffprobe are installed and in PATH."
 }
 
-$durationSeconds = [math]::Ceiling([double]$durationText.Trim())
-$clipCount = [math]::Ceiling($durationSeconds / 60.0)
+$durationTotal = [double]$durationText.Trim()
+$durationSeconds = [math]::Ceiling($durationTotal)
+$clipCount = [math]::Ceiling($durationTotal / 60.0)
 
 Write-Host "Video duration: $durationSeconds seconds"
 Write-Host "Uploading $clipCount clips to $ServerUrl/api/clips"
@@ -37,6 +38,7 @@ Write-Host "Uploading $clipCount clips to $ServerUrl/api/clips"
 for ($clipIndex = 0; $clipIndex -lt $clipCount; $clipIndex++) {
     $minute = $clipIndex + 1
     $startSeconds = $clipIndex * 60
+    $clipDurationSeconds = [math]::Min(60.0, [math]::Max(0.0, $durationTotal - $startSeconds))
     $clipPath = Join-Path $resolvedOutputDir ("{0}_h{1}_m{2:000}.mp4" -f $fileNameBase, $Half, $minute)
 
     $extractArgs = @(
@@ -65,6 +67,7 @@ for ($clipIndex = 0; $clipIndex -lt $clipCount; $clipIndex++) {
         "-F", "match_id=$MatchId",
         "-F", "half=$Half",
         "-F", "minute=$minute",
+        "-F", "clip_duration_seconds=$clipDurationSeconds",
         "-F", "team0_name=$Team0Name",
         "-F", "team1_name=$Team1Name",
         "-F", "team0_colour=$Team0Colour",

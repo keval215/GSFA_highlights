@@ -28,6 +28,7 @@ CREATE TABLE minute_stats (
   match_id             NVARCHAR(64) NOT NULL,
   half                 TINYINT      NOT NULL,
   minute               INT          NOT NULL,
+  clip_duration_seconds DECIMAL(6,2) NULL,      -- seconds reported by the incoming clip payload
   frames_team0         INT NOT NULL DEFAULT 0,
   frames_team1         INT NOT NULL DEFAULT 0,
   frames_loose         INT NOT NULL DEFAULT 0,

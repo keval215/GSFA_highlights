@@ -199,12 +199,14 @@ def write_clip_result(
             revision = 0
             cur.execute(
                 "INSERT INTO minute_stats (match_id, half, minute, "
+                "  clip_duration_seconds, "
                 "  frames_team0, frames_team1, frames_loose, frames_oof, "
                 "  passes_completed_t0, passes_completed_t1, "
                 "  interceptions_t0, interceptions_t1, "
                 "  ball_lost_t0, ball_lost_t1, revision, clip_blob_path) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                 row.match_id, row.half, row.minute,
+                row.clip_duration_seconds,
                 row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
                 row.passes_completed_t0, row.passes_completed_t1,
                 row.interceptions_t0, row.interceptions_t1,
@@ -215,12 +217,14 @@ def write_clip_result(
             revision = int(existing[0])
             cur.execute(
                 "UPDATE minute_stats SET "
+                "  clip_duration_seconds = ?, "
                 "  frames_team0 = ?, frames_team1 = ?, frames_loose = ?, frames_oof = ?, "
                 "  passes_completed_t0 = ?, passes_completed_t1 = ?, "
                 "  interceptions_t0 = ?, interceptions_t1 = ?, "
                 "  ball_lost_t0 = ?, ball_lost_t1 = ?, "
                 "  clip_blob_path = ?, processed_at = SYSUTCDATETIME() "
                 "WHERE match_id = ? AND half = ? AND minute = ?",
+                row.clip_duration_seconds,
                 row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
                 row.passes_completed_t0, row.passes_completed_t1,
                 row.interceptions_t0, row.interceptions_t1,

@@ -54,6 +54,7 @@ class Detection:
     is_goalkeeper: bool         = False      # set by GoalkeeperDetector
     track_id:     Optional[int] = None       # set by PlayerTracker
     embedding:    Optional[np.ndarray] = None  # 768-D SigLIP, set by GSFATeamClassifier.classify
+    smoothed_bbox: Optional[tuple[int, int, int, int]] = None  # BoT-SORT Kalman box — set by PlayerTracker, used for jitter-free drawing
 
 
 @dataclass
@@ -96,6 +97,7 @@ class PlayerDetector:
         *,
         player_conf: float = 0.50,
         ball_conf: float = 0.25,
+        classes: list[int] | None = None,
     ) -> None:
         # `conf` is the floor passed to the model call. Per-class thresholds are
         # then applied in _parse: players/refs/posts keep the historical 0.50 gate,
@@ -104,6 +106,11 @@ class PlayerDetector:
         self.conf        = conf
         self.player_conf = player_conf
         self.ball_conf   = ball_conf
+        # Optional class allow-list passed straight to Ultralytics. None = all
+        # classes (default, unchanged for the service/VM path). Local possession
+        # passes [0, 1, 2] to hard-filter referees (class 3) at the model call so
+        # no referee box is ever produced.
+        self.classes = classes
         self.device = device
         self.model  = YOLO(model_path)
         # fp16 on CUDA for ~2x throughput on T4; CPU path stays fp32.
@@ -122,7 +129,8 @@ class PlayerDetector:
     ) -> FrameDetections:
         """Run inference on one BGR frame. Returns FrameDetections."""
         results = self.model(frame, conf=self.conf, device=self.device,
-                              imgsz=self.imgsz, half=self.half, verbose=False)
+                              imgsz=self.imgsz, half=self.half, classes=self.classes,
+                              verbose=False)
         return self._parse(results[0], frame_idx, fps)
 
     # ------------------------------------------------------------------
@@ -143,7 +151,8 @@ class PlayerDetector:
         if not frames:
             return []
         results = self.model(frames, conf=self.conf, device=self.device,
-                             imgsz=self.imgsz, half=self.half, verbose=False)
+                             imgsz=self.imgsz, half=self.half, classes=self.classes,
+                             verbose=False)
         return [self._parse(r, fidx, fps)
                 for r, fidx in zip(results, frame_indices)]
 

@@ -103,7 +103,13 @@ class PlayerTracker:
             return
 
         # boxmot rows: x1, y1, x2, y2, id, conf, cls, det_ind
+        # row[0:4] is BoT-SORT's Kalman-smoothed box for the track — stash it on
+        # the Detection so drawing can use the steady box instead of the raw
+        # per-frame YOLO bbox (which wobbles). Raw .bbox is left untouched so
+        # foot-zone / carrier geometry is unchanged.
         for row in out_arr:
             det_ind = int(row[7])
             if 0 <= det_ind < len(players):
-                players[det_ind].track_id = int(row[4])
+                players[det_ind].track_id      = int(row[4])
+                players[det_ind].smoothed_bbox = (
+                    int(row[0]), int(row[1]), int(row[2]), int(row[3]))

@@ -40,6 +40,7 @@ class MinuteRow:
     match_id: str
     half:     int
     minute:   int
+    clip_duration_seconds: Optional[float] = None
     frames_team0: int = 0
     frames_team1: int = 0
     frames_loose: int = 0
@@ -149,10 +150,16 @@ class MinuteCounters:
                 self.ball_lost_t1 += 1
 
     def to_minute_row(
-        self, match_id: str, half: int, minute: int, clip_blob_path: Optional[str],
+        self,
+        match_id: str,
+        half: int,
+        minute: int,
+        clip_blob_path: Optional[str],
+        clip_duration_seconds: Optional[float] = None,
     ) -> MinuteRow:
         return MinuteRow(
             match_id=match_id, half=half, minute=minute,
+            clip_duration_seconds=clip_duration_seconds,
             frames_team0=self.frames_team0, frames_team1=self.frames_team1,
             frames_loose=self.frames_loose, frames_oof=self.frames_oof,
             passes_completed_t0=self.passes_completed_t0,

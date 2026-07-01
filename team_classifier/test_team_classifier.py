@@ -47,9 +47,16 @@ args = parser.parse_args()
 # ---------------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------------
-VIDEO_PATH   = r"C:\Users\Admin\Downloads\Video Project 8.mp4"
-N_PREVIEW    = 10
-SAMPLE_EVERY = 5
+# Mirror video_analysis/possession.py exactly so the dumped crops/labels match
+# what the real run produces (same video, same detector weights, same device,
+# same conf, same class filter, same fit cadence).
+VIDEO_PATH           = r"C:\Users\Admin\Downloads\test.mp4"
+PLAYER_MODEL_WEIGHTS = r"C:\Users\Admin\OneDrive\Desktop\CZ\aiff_v1.pt"
+DEVICE               = "cuda"
+PLAYER_CONF          = 0.55
+DETECT_CLASSES       = [0, 1, 2]   # active_player, ball, goal_post (referee=3 filtered)
+N_PREVIEW            = 10
+SAMPLE_EVERY         = 30          # fit cadence — matches possession's default (1 fps @ 30fps)
 
 if args.colour:
     OUT_DIR = Path(r"D:\GSFA_highlights\data\debug\team_test_colour")
@@ -77,13 +84,14 @@ print()
 # LOAD MODELS
 # ---------------------------------------------------------------------------
 print("[1/3] Loading PlayerDetector …")
-player_det = PlayerDetector()
+player_det = PlayerDetector(model_path=PLAYER_MODEL_WEIGHTS, device=DEVICE,
+                            classes=DETECT_CLASSES, player_conf=PLAYER_CONF)
 
 print(f"[2/3] Fitting / loading {MODE} classifier …")
 if args.colour:
     clf = ColourHistogramTeamClassifier()
 else:
-    clf = GSFATeamClassifier()
+    clf = GSFATeamClassifier(device=DEVICE)
 
 clf.fit_from_video_or_load(
     video_path   = VIDEO_PATH,
@@ -111,6 +119,8 @@ TEAM_COLOURS = {0: (255, 80, 0), 1: (0, 80, 255), None: (160, 160, 160)}
 THUMB_H, THUMB_W, BORDER = 96, 64, 4
 
 team0_total = team1_total = player_total = 0
+diag_emb: list[np.ndarray] = []   # 768-d SigLIP per classified player (for fit diagnostics)
+diag_lbl: list[int] = []          # its assigned team_id
 fidx = 0
 
 while True:
@@ -132,6 +142,12 @@ while True:
         team0_total  += t0
         team1_total  += t1
         player_total += len(dets.players)
+
+        # Collect SigLIP embeddings + assigned labels for post-run fit diagnostics
+        for p in dets.players:
+            if p.embedding is not None and p.team_id is not None:
+                diag_emb.append(p.embedding)
+                diag_lbl.append(p.team_id)
 
         # --- annotated full frame ---
         if args.colour:
@@ -182,6 +198,38 @@ while True:
     fidx += 1
 
 cap.release()
+
+# ---------------------------------------------------------------------------
+# FIT DIAGNOSTICS (SigLIP) — is the clustering actually separating teams?
+# ---------------------------------------------------------------------------
+if not args.colour and diag_emb:
+    feats  = np.asarray(diag_emb, dtype=np.float32)
+    labels = np.asarray(diag_lbl, dtype=int)
+    proj   = clf._classifier.reducer.transform(feats)      # (N, 3) UMAP space
+    sizes  = np.bincount(labels, minlength=2)
+
+    np.save(OUT_DIR / "umap_projections.npy", proj)
+    np.save(OUT_DIR / "umap_labels.npy", labels)
+
+    print()
+    print("=" * 60)
+    print("  FIT DIAGNOSTICS  [SIGLIP]")
+    print("=" * 60)
+    print(f"  Classified players : {len(labels)}")
+    print(f"  Cluster sizes      : T0={sizes[0]}  T1={sizes[1]}")
+    if len(np.unique(labels)) > 1 and len(labels) > 2:
+        from sklearn.metrics import silhouette_score
+        sil = silhouette_score(proj, labels)
+        print(f"  Silhouette (UMAP)  : {sil:.3f}  (>0.5 clean split, <0.2 weak/degenerate)")
+    else:
+        print("  Silhouette (UMAP)  : n/a — only ONE cluster populated (degenerate fit)")
+    print(f"  Saved              : umap_projections.npy + umap_labels.npy → {OUT_DIR}")
+    print("  Interpretation:")
+    print("   - one cluster ~0 OR silhouette <0.2 → SigLIP isn't separating the")
+    print("     jerseys (crops background-dominated); not a _torso_crop code bug.")
+    print("   - both clusters healthy + good silhouette but wrong borders in")
+    print("     crops_XXXXX.jpg → crop grabs the wrong region; inspect _torso_crop.")
+    print("=" * 60)
 
 # ---------------------------------------------------------------------------
 # SUMMARY

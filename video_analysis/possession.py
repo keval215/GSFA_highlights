@@ -37,7 +37,7 @@ from tracking.player_tracker import PlayerTracker
 # CONFIGURATION
 # ---------------------------------------------------------------------------
 
-PLAYER_MODEL_WEIGHTS = r"C:\Users\Admin\OneDrive\Desktop\CZ\aiff_v1.pt"
+PLAYER_MODEL_WEIGHTS = r"C:\Users\Admin\OneDrive\Desktop\CZ\aiff_v2.pt"
 DEVICE               = "cuda"   # CUDA is available locally; "cpu" works but is slow at imgsz 960
 VIDEO_PATH         = r"C:\Users\Admin\Downloads\aiff_1\1.mp4"
 OUTPUT_PATH        = r"data/output/possession_output.mp4"

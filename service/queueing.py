@@ -52,9 +52,18 @@ class ClipQueue:
 
     # --- producer (api) ---
 
-    def enqueue(self, match_id: str, half: int, minute: int, blob_path: str) -> None:
+    def enqueue(
+        self,
+        match_id: str,
+        half: int,
+        minute: int,
+        blob_path: str,
+    ) -> None:
         self._queue.send_message(json.dumps({
-            "match_id": match_id, "half": half, "minute": minute, "blob_path": blob_path,
+            "match_id": match_id,
+            "half": half,
+            "minute": minute,
+            "blob_path": blob_path,
         }))
 
     # --- consumer (worker) ---

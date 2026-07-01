@@ -57,6 +57,8 @@ def process_clip(
         raise IOError(f"process_clip: cannot open {clip_path}")
 
     fps        = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
+    clip_duration_seconds = round(frame_count / fps, 2) if fps > 0 and frame_count > 0 else None
     frame_step = max(1, round(fps / config.TARGET_PROCESS_FPS))
     window_k   = max(1, config.CLIP_BATCH_WINDOW)
 
@@ -184,7 +186,13 @@ def process_clip(
         )
 
     return ClipResult(
-        minute_row=counters.to_minute_row(session.match_id, half, minute, clip_blob_path),
+        minute_row=counters.to_minute_row(
+            session.match_id,
+            half,
+            minute,
+            clip_blob_path,
+            clip_duration_seconds,
+        ),
         correction=correction,
         events=event_rows,
     )

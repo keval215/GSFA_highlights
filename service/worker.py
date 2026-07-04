@@ -30,6 +30,7 @@ import warnings
 from service import config, db, logging_setup, notifier
 from service.blob import ClipBlobStore
 from service.clip_processor import process_clip
+from service.post_processing.post_processing import process_match_video
 from service.queueing import ClipMessage, ClipQueue
 from service.session import MatchSessionManager, ModelBundle
 from service.stats import is_expected
@@ -75,6 +76,10 @@ class Worker:
 
     def _handle(self, msg: ClipMessage) -> None:
         self._last_dequeue_count = msg.dequeue_count
+
+        if msg.kind == "post_processing":
+            self._handle_post_processing(msg)
+            return
 
         if msg.dequeue_count > config.MAX_DEQUEUE_COUNT:
             log.error("POISON clip %s h%d m%d (dequeue_count=%d)",
@@ -140,6 +145,43 @@ class Worker:
         notifier.send_pending_for_match(self.conn, msg.match_id)
 
         # --- Cleanup
+        self.queue.delete(msg)
+        self.blob.delete(msg.blob_path)
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+    def _handle_post_processing(self, msg: ClipMessage) -> None:
+        if db.post_processing_exists(self.conn, msg.match_id):
+            log.info("post-processing %s already processed — dropping message", msg.match_id)
+            self.queue.delete(msg)
+            self.blob.delete(msg.blob_path)
+            return
+
+        db.ensure_match(self.conn, msg.match_id,
+                        msg.team0_name, msg.team1_name,
+                        msg.team0_colour, msg.team1_colour)
+
+        session = self.manager.get_or_create(msg.match_id)
+        job_dir = config.JOBS_DIR / msg.match_id
+        video_path = job_dir / "post_processing.mp4"
+        self.blob.download_to(msg.blob_path, video_path)
+
+        t_start = time.monotonic()
+        result = process_match_video(session, str(video_path), blob_path=msg.blob_path)
+
+        db.write_post_processing_result(
+            self.conn,
+            result.minute_row,
+            team0_name=msg.team0_name,
+            team1_name=msg.team1_name,
+            team0_colour=msg.team0_colour,
+            team1_colour=msg.team1_colour,
+            video_blob_path=msg.blob_path,
+        )
+
+        self._last_clip_seconds = round(time.monotonic() - t_start, 1)
+        log.info("post-processing %s completed in %.1fs (events=%d)",
+                 msg.match_id, self._last_clip_seconds, len(result.events))
+
         self.queue.delete(msg)
         self.blob.delete(msg.blob_path)
         shutil.rmtree(job_dir, ignore_errors=True)

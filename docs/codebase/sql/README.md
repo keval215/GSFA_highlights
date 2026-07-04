@@ -6,6 +6,7 @@ The Azure SQL (`gsfa_stats`) schema the service writes to. One file: `schema.sql
 |---|---|
 | `matches` | One row per match: team names/colours, processing progress, per-half upload counters |
 | `minute_stats` | One row per processed 60 s clip — **raw** counters only |
+| `post_processing` | One row per whole-match upload — raw counters plus team metadata snapshot |
 | `events` | Append-only log of pass / interception / ball_lost events |
 | `callback_outbox` | Transactional outbox: cumulative payloads the notifier delivers |
 
@@ -29,6 +30,8 @@ These explain *why* the tables look the way they do (see also `service/db.py`):
   is always eventually delivered (or marked `failed`).
 - **Atomic minute claim.** `next_clip_seq_h1` / `next_clip_seq_h2` are bumped with
   `UPDATE...OUTPUT` so concurrent uploads get distinct minute numbers.
+- **Whole-match upsert.** `post_processing` is keyed by `match_id` and stores the raw
+  whole-match counters and the team metadata snapshot used for that upload.
 
 ## Key columns
 
@@ -38,6 +41,8 @@ These explain *why* the tables look the way they do (see also `service/db.py`):
   (`db.get_team_specs` returns them only if **all four** are present).
 - `minute_stats.frames_team0/1/loose/oof` — possession denominator is `team0+team1`.
 - `minute_stats.revision` — incremented by retroactive corrections.
+- `post_processing.match_id` — the whole-match primary key; there is no half/minute or
+  revision column because the table represents one processed match file.
 - `events.kind` — `pass | interception | ball_lost` (mapped from FSM kinds via
   `stats.KIND_MAP`). `from_track`/`to_track` are the BoT-SORT track IDs.
 - `callback_outbox.status` — `pending | sent | failed`.

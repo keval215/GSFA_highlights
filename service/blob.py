@@ -5,6 +5,7 @@ api uploads incoming clips; the worker downloads them for processing and
 deletes them after the SQL transaction commits. Blob name layout:
 
     <CLIPS_CONTAINER>/<match_id>/<half>_<minute>.mp4
+        <CLIPS_CONTAINER>/<match_id>/post_processing.mp4
 """
 
 from __future__ import annotations
@@ -19,6 +20,9 @@ from service import config
 
 def blob_name(match_id: str, half: int, minute: int) -> str:
     return f"{match_id}/{half}_{minute}.mp4"
+
+def post_processing_blob_name(match_id: str) -> str:
+    return f"{match_id}/post_processing.mp4"
 
 
 class ClipBlobStore:

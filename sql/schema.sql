@@ -45,6 +45,27 @@ CREATE TABLE minute_stats (
   CONSTRAINT PK_minute_stats PRIMARY KEY (match_id, half, minute)   -- idempotency key
 );
 
+-- Whole-match aggregate written by POST /post-processing.
+CREATE TABLE post_processing (
+  match_id              NVARCHAR(64)  NOT NULL PRIMARY KEY,
+  team0_name            NVARCHAR(128) NULL,
+  team1_name            NVARCHAR(128) NULL,
+  team0_colour          NVARCHAR(32)  NULL,
+  team1_colour          NVARCHAR(32)  NULL,
+  frames_team0          INT NOT NULL DEFAULT 0,
+  frames_team1          INT NOT NULL DEFAULT 0,
+  frames_loose          INT NOT NULL DEFAULT 0,
+  frames_oof            INT NOT NULL DEFAULT 0,
+  passes_completed_t0   INT NOT NULL DEFAULT 0,
+  passes_completed_t1   INT NOT NULL DEFAULT 0,
+  interceptions_t0      INT NOT NULL DEFAULT 0,
+  interceptions_t1      INT NOT NULL DEFAULT 0,
+  ball_lost_t0          INT NOT NULL DEFAULT 0,
+  ball_lost_t1          INT NOT NULL DEFAULT 0,
+  video_blob_path       NVARCHAR(400) NULL,
+  processed_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
 -- Append-only event log; future highlight-reel source.
 CREATE TABLE events (
   event_id      BIGINT IDENTITY PRIMARY KEY,

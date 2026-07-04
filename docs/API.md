@@ -105,6 +105,44 @@ The server stores `clip_duration_seconds` exactly as sent by the client.
 
 ---
 
+### POST /post-processing
+
+Upload a whole-match video for post-match analysis. The API returns `200` as soon as the file has been fully received, stored in blob storage, and queued for background processing.
+
+**Content-Type:** `multipart/form-data`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | binary (mp4) | yes | Whole-match video. `video/mp4` or `application/octet-stream`. Max `MAX_UPLOAD_GB` GB. |
+| `match_id` | string | yes | Unique match identifier. Used as the SQL primary key in `post_processing`. |
+| `team0_name` | string | no | Display name for team 0. Stored in `matches` and `post_processing`. |
+| `team1_name` | string | no | Display name for team 1. |
+| `team0_colour` | string | no | Jersey colour for team 0. |
+| `team1_colour` | string | no | Jersey colour for team 1. |
+
+The server uploads the file to blob storage at `clips/<match_id>/post_processing.mp4`, enqueues a background job, and deletes the blob after processing completes.
+
+**200 OK — received and queued:**
+
+```json
+{
+  "received": true,
+  "match_id": "match_abc123"
+}
+```
+
+**200 OK — duplicate upload already processed:**
+
+```json
+{
+  "received": true,
+  "duplicate": true,
+  "match_id": "match_abc123"
+}
+```
+
+---
+
 ### GET /health
 
 Liveness check. Returns 200 when the worker is alive, 503 when it has not written a heartbeat within the last 300 s.
@@ -133,48 +171,6 @@ Liveness check. Returns 200 when the worker is alive, 503 when it has not writte
 
 ---
 
-### GET /metrics
-
-Operational metrics. Always 200; fields are `null` when the worker has not run yet.
-
-**Response:**
-
-```json
-{
-  "queue_depth": 3,
-  "poison_depth": 0,
-  "last_clip_processing_seconds": 87.4,
-  "seconds_behind_live": 180,
-  "active_matches": ["match_abc123"],
-  "gpu_memory_allocated_mb": 2048,
-  "last_dequeue_count": 1
-}
-```
-
-| Field | Description |
-|---|---|
-| `queue_depth` | Clips waiting to be processed |
-| `poison_depth` | Clips that failed > `MAX_DEQUEUE_COUNT` times (manual inspection needed) |
-| `last_clip_processing_seconds` | Wall time for the most recent clip |
-| `seconds_behind_live` | `queue_depth × 60` — approximate lag behind live match time |
-| `active_matches` | Match IDs with live MatchSession state in the worker |
-| `gpu_memory_allocated_mb` | `torch.cuda.memory_allocated()` in MB |
-| `last_dequeue_count` | Azure dequeue count of the last message (> 1 means it was retried) |
-
----
-
-## Callback (outbox) — POST to the advance-stats endpoint
-
-After each clip is processed and its SQL transaction commits, the worker POSTs the cumulative stats to the tournament-duelz advance-stats endpoint:
-
-```
-POST {CALLBACK_URL}/v1/pvt/tournament-duelz/{match_id}/advance-stats
-X-Super-Admin-Key: {SUPER_ADMIN_KEY}
-```
-
-`CALLBACK_URL` is the **base origin only** (e.g. `https://dev-server.clubduelz.in`); `match_id` is the tournament-duel ObjectID and fills the `{id}` path segment. Each POST is a **full overwrite** of the duel's `advance_stats` subdocument and the server replies `204 No Content`.
-
-Deliveries are strictly ordered by `(half, minute)`. Retry: up to `CALLBACK_RETRIES` attempts with exponential backoff (`CALLBACK_BACKOFF_BASE × 2^n` seconds); a `401` (bad/missing super-admin key) fails fast without retrying. On permanent failure the row is marked `failed` in SQL but processing continues.
 
 If `CALLBACK_URL` or `SUPER_ADMIN_KEY` is unset, rows stay `pending` in `callback_outbox` — no stats are lost.
 

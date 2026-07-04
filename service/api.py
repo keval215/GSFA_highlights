@@ -9,6 +9,13 @@ POST /api/clips  multipart/form-data:
     → enqueue {"match_id","half","minute","blob_path","clip_duration_seconds"}
   → 202 in ~1–2 s. Processing is never inline.
 
+POST /post-processing  multipart/form-data:
+    file (whole-match mp4), match_id
+        [+ team0_name, team1_name, team0_colour, team1_colour]
+    → upload blob clips/<match_id>/post_processing.mp4
+        → enqueue {"kind":"post_processing", ...}
+    → 200 once the upload is fully received and queued.
+
 half and minute are optional (default 0). Duplicate (match_id, half, minute)
 ⇒ 202 with "duplicate": true, clip skipped.
 
@@ -30,7 +37,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from service import config, db, logging_setup
-from service.blob import ClipBlobStore, blob_name
+from service.blob import ClipBlobStore, blob_name, post_processing_blob_name
 from service.queueing import ClipQueue
 
 # Under `uvicorn service.api:app` the root logger has no handler, so our gsfa.api
@@ -50,7 +57,7 @@ class _AccessLogFilter(logging.Filter):
     """Drop uvicorn access-log lines for paths we don't serve — internet
     scanners hammering /, /favicon.ico, /mcp, etc. spam 404s otherwise."""
 
-    _KEEP = ("/api/", "/health", "/metrics")
+    _KEEP = ("/api/", "/post-processing", "/health", "/metrics")
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
@@ -134,6 +141,46 @@ async def post_clip(
     size_mb = (file.size / 1024**2) if file.size else 0.0
     log.info("received clip %s h%d m%d (%.1f MB) — queued", match_id, half, minute, size_mb)
     return {"accepted": True, "match_id": match_id, "half": half, "minute": minute}
+
+
+@app.post("/post-processing", status_code=200)
+async def post_processing(
+    file: UploadFile = File(...),
+    match_id: str = Form(...),
+    team0_name: Optional[str] = Form(None),
+    team1_name: Optional[str] = Form(None),
+    team0_colour: Optional[str] = Form(None),
+    team1_colour: Optional[str] = Form(None),
+):
+    if file.content_type not in ("video/mp4", "application/octet-stream", None):
+        raise HTTPException(415, f"unsupported content type: {file.content_type}")
+    if file.size is not None and file.size > config.MAX_UPLOAD_GB * 1024**3:
+        raise HTTPException(413, f"video exceeds {config.MAX_UPLOAD_GB} GB cap")
+
+    conn = db.get_conn()
+    try:
+        db.ensure_match(conn, match_id, team0_name, team1_name, team0_colour, team1_colour)
+        already_processed = db.post_processing_exists(conn, match_id)
+    finally:
+        conn.close()
+
+    name = post_processing_blob_name(match_id)
+    if already_processed or _blob.exists(name):
+        log.debug("duplicate post-processing upload %s — skipped", match_id)
+        return {"received": True, "duplicate": True, "match_id": match_id}
+
+    _blob.upload_stream(name, file.file)
+    _queue.enqueue_post_processing(
+        match_id=match_id,
+        blob_path=name,
+        team0_name=team0_name,
+        team1_name=team1_name,
+        team0_colour=team0_colour,
+        team1_colour=team1_colour,
+    )
+    size_mb = (file.size / 1024**2) if file.size else 0.0
+    log.info("received post-processing video %s (%.1f MB) — queued", match_id, size_mb)
+    return {"received": True, "match_id": match_id}
 
 
 @app.get("/health")

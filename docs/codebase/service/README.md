@@ -14,7 +14,7 @@ See also: [docs/API.md](../../API.md) (HTTP contract + env vars) and
 | File | Role | GPU? |
 |---|---|---|
 | `config.py` | All environment variables in one place; fail-fast on missing required vars | — |
-| `api.py` | FastAPI ingest (`POST /api/clips`, `GET /health`, `GET /metrics`) | no |
+| `api.py` | FastAPI ingest (`POST /api/clips`, `POST /post-processing`, `GET /health`, `GET /metrics`) | no |
 | `worker.py` | Queue poll loop; orchestrates one clip end-to-end | yes |
 | `session.py` | `MatchSession` (cross-clip state) + team-fit logic + session manager | yes |
 | `clip_processor.py` | Drives ONE clip through the pipeline (batched two-pass) | yes |
@@ -66,6 +66,9 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   resolve/claim the minute (`db.claim_next_minute` if not supplied), dedupe
   (`minute_exists` or blob already exists ⇒ `202 duplicate`), else `blob.upload_stream` +
   `queue.enqueue` ⇒ `202`.
+- `POST /post-processing` (multipart): accepts a whole-match video, stores it at
+  `clips/<match_id>/post_processing.mp4`, enqueues a background job, and returns `200`
+  once the upload is fully received. The worker deletes the blob after processing.
 - `GET /health` — 200 if the worker heartbeat is < 300 s old, else 503.
 - `GET /metrics` — queue depths, last-clip seconds, seconds-behind-live, GPU mem, etc.
 - **Does NOT** process clips inline, touch the GPU, or render — it returns in ~1–2 s.
@@ -80,6 +83,8 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   seconds-behind-live, active matches).
 - **Does NOT** parallelise across clips — one clip at a time (simple, ~1 concurrent match
   expected). **Does NOT** render video.
+- Routes `kind = post_processing` queue messages through the whole-match path and writes
+  the new `post_processing` SQL table.
 
 ## `session.py`
 - **`ModelBundle`** — process-wide models loaded once (currently just the unified
@@ -117,6 +122,13 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - **Does NOT** render, write SQL, or send callbacks — it returns plain data the worker
   persists. Per-stage timing is logged at DEBUG.
 
+## `post_processing/post_processing.py`
+- Thin whole-match wrapper around the existing pipeline. It reuses `process_clip(...)`
+  over the full uploaded video, so the same detector, team classifier, tracker, ball
+  Kalman, carrier, and pass FSM logic is used without duplicating the CV path.
+- The worker writes the resulting aggregate counters to the `post_processing` table and
+  deletes the blob after the SQL commit.
+
 ## `stats.py` (dependency-free, unit-tested)
 - Pure stdlib data shapes: `MinuteRow`, `EventRow`, `PriorCorrection`, `MinuteCounters`,
   `ClipResult`; the label/event constants (mirroring `possession.py`); `KIND_MAP`.
@@ -138,6 +150,8 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   claim (`claim_next_minute` via `UPDATE...OUTPUT`), `minute_exists`, `get_match_progress`,
   `get_team_specs` (only if both teams have name **and** colour). Outbox ops
   (`fetch_pending`, `mark_sent`, `mark_failed`) for the notifier.
+- `write_post_processing_result(...)` upserts the new whole-match `post_processing` table
+  keyed by `match_id` and stores the team metadata snapshot alongside the raw counters.
 
 ## `blob.py` / `queueing.py` (Azure adapters)
 - `blob.py` — `ClipBlobStore`: container ensure/exists/upload/download/delete. Blob layout

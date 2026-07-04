@@ -1,9 +1,14 @@
 """
 service/queueing.py — Azure Queue Storage wrapper.
 
-One message per clip:
-    {"match_id": str, "half": int, "minute": int, "blob_path": str,
-     "clip_duration_seconds": float}
+One message per work item:
+    clip:
+        {"kind": "clip", "match_id": str, "half": int, "minute": int,
+         "blob_path": str, "clip_duration_seconds": float}
+    post-processing:
+        {"kind": "post_processing", "match_id": str, "blob_path": str,
+         "team0_name": str | null, "team1_name": str | null,
+         "team0_colour": str | null, "team1_colour": str | null}
 
 Azure Queue Storage is approximately FIFO, so the worker enforces ordering
 itself (see worker.py); this module only provides enqueue/dequeue/poison
@@ -26,10 +31,15 @@ from service import config
 @dataclass
 class ClipMessage:
     match_id:  str
-    half:      int
-    minute:    int
     blob_path: str
+    kind: str = "clip"
+    half:      int = 0
+    minute:    int = 0
     clip_duration_seconds: float = 60.0
+    team0_name: Optional[str] = None
+    team1_name: Optional[str] = None
+    team0_colour: Optional[str] = None
+    team1_colour: Optional[str] = None
     # How many times the worker deferred this message because it arrived
     # out of order (carried in the message body across re-sends).
     ordering_retries: int = 0
@@ -61,14 +71,53 @@ class ClipQueue:
         minute: int,
         blob_path: str,
         clip_duration_seconds: float,
+        kind: str = "clip",
+        team0_name: Optional[str] = None,
+        team1_name: Optional[str] = None,
+        team0_colour: Optional[str] = None,
+        team1_colour: Optional[str] = None,
     ) -> None:
-        self._queue.send_message(json.dumps({
+        body = {
+            "kind": kind,
             "match_id": match_id,
             "half": half,
             "minute": minute,
             "blob_path": blob_path,
             "clip_duration_seconds": clip_duration_seconds,
-        }))
+        }
+        if team0_name is not None:
+            body["team0_name"] = team0_name
+        if team1_name is not None:
+            body["team1_name"] = team1_name
+        if team0_colour is not None:
+            body["team0_colour"] = team0_colour
+        if team1_colour is not None:
+            body["team1_colour"] = team1_colour
+        self._queue.send_message(json.dumps(body))
+
+    def enqueue_post_processing(
+        self,
+        match_id: str,
+        blob_path: str,
+        team0_name: Optional[str] = None,
+        team1_name: Optional[str] = None,
+        team0_colour: Optional[str] = None,
+        team1_colour: Optional[str] = None,
+    ) -> None:
+        body = {
+            "kind": "post_processing",
+            "match_id": match_id,
+            "blob_path": blob_path,
+        }
+        if team0_name is not None:
+            body["team0_name"] = team0_name
+        if team1_name is not None:
+            body["team1_name"] = team1_name
+        if team0_colour is not None:
+            body["team0_colour"] = team0_colour
+        if team1_colour is not None:
+            body["team1_colour"] = team1_colour
+        self._queue.send_message(json.dumps(body))
 
     # --- consumer (worker) ---
 
@@ -88,10 +137,15 @@ class ClipQueue:
                 continue
             return ClipMessage(
                 match_id         = body["match_id"],
-                half             = int(body["half"]),
-                minute           = int(body["minute"]),
                 blob_path        = body["blob_path"],
+                kind             = str(body.get("kind", "clip")),
+                half             = int(body.get("half", 0)),
+                minute           = int(body.get("minute", 0)),
                 clip_duration_seconds = float(body.get("clip_duration_seconds", 60.0)),
+                team0_name       = body.get("team0_name"),
+                team1_name       = body.get("team1_name"),
+                team0_colour     = body.get("team0_colour"),
+                team1_colour     = body.get("team1_colour"),
                 ordering_retries = int(body.get("ordering_retries", 0)),
                 message_id       = m.id,
                 pop_receipt      = m.pop_receipt,
@@ -109,9 +163,14 @@ class ClipQueue:
         self._queue.delete_message(msg.message_id, msg.pop_receipt)
         self._queue.send_message(
             json.dumps({
+                "kind": msg.kind,
                 "match_id": msg.match_id, "half": msg.half,
                 "minute": msg.minute, "blob_path": msg.blob_path,
                 "clip_duration_seconds": msg.clip_duration_seconds,
+                "team0_name": msg.team0_name,
+                "team1_name": msg.team1_name,
+                "team0_colour": msg.team0_colour,
+                "team1_colour": msg.team1_colour,
                 "ordering_retries": msg.ordering_retries + 1,
             }),
             visibility_timeout=delay_seconds,
@@ -119,9 +178,14 @@ class ClipQueue:
 
     def move_to_poison(self, msg: ClipMessage) -> None:
         self._poison.send_message(json.dumps({
+            "kind": msg.kind,
             "match_id": msg.match_id, "half": msg.half,
             "minute": msg.minute, "blob_path": msg.blob_path,
             "clip_duration_seconds": msg.clip_duration_seconds,
+            "team0_name": msg.team0_name,
+            "team1_name": msg.team1_name,
+            "team0_colour": msg.team0_colour,
+            "team1_colour": msg.team1_colour,
         }))
         self._queue.delete_message(msg.message_id, msg.pop_receipt)
 

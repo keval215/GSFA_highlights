@@ -117,6 +117,39 @@ def test_clip_duration_seconds_is_persisted(conn, match_id):
     assert float(cur.fetchone()[0]) == 63.25
 
 
+def test_post_processing_upsert(conn, match_id):
+    row = _row(
+        match_id, 1, 1,
+        frames_team0=120, frames_team1=80,
+        frames_loose=12, frames_oof=3,
+        passes_completed_t0=4, passes_completed_t1=5,
+        interceptions_t0=1, interceptions_t1=2,
+        ball_lost_t0=7, ball_lost_t1=8,
+    )
+    db.write_post_processing_result(
+        conn,
+        row,
+        team0_name="A",
+        team1_name="B",
+        team0_colour="#FF6600",
+        team1_colour="#0033FF",
+        video_blob_path="clips/test/post_processing.mp4",
+    )
+    db.write_post_processing_result(
+        conn,
+        row,
+        team0_name="A",
+        team1_name="B",
+        team0_colour="#FF6600",
+        team1_colour="#0033FF",
+        video_blob_path="clips/test/post_processing.mp4",
+    )
+
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM post_processing WHERE match_id = ?", match_id)
+    assert cur.fetchone()[0] == 1
+
+
 def test_progress_advances(conn, match_id):
     db.write_clip_result(conn, _row(match_id, 1, 1), None, [])
     db.write_clip_result(conn, _row(match_id, 1, 2), None, [])

@@ -96,6 +96,12 @@ Polls the queue. Per clip (`Worker._handle`):
 7. **Callback** — `notifier.send_pending_for_match(...)` POSTs cumulative stats in order.
 8. **Cleanup** — delete queue message + blob + local job dir; evict idle sessions.
 
+For `kind = post_processing` queue messages, the worker takes a separate but still
+shared path: it ensures the match metadata exists, fits/loads the team classifier from
+the whole uploaded video if needed, reuses the same shared CV pipeline over the entire
+match file, writes one aggregate row to the `post_processing` table, and then deletes
+the blob.
+
 Mode B **does not render** anything. Its outputs are SQL rows and HTTP callbacks.
 
 See [service/README.md](service/README.md) and [docs/API.md](../API.md).

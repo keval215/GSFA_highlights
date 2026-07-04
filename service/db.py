@@ -28,6 +28,7 @@ __all__ = [
     "EventRow", "MinuteRow", "PriorCorrection", "OutboxRow", "build_payload",
     "get_conn", "ensure_match", "get_team_specs", "get_match_progress",
     "claim_next_minute", "minute_exists", "cumulative_read", "write_clip_result",
+    "post_processing_exists", "write_post_processing_result",
     "fetch_pending", "mark_sent", "mark_failed",
 ]
 
@@ -134,6 +135,15 @@ def minute_exists(conn: pyodbc.Connection, match_id: str, half: int, minute: int
     cur.execute(
         "SELECT 1 FROM minute_stats WHERE match_id = ? AND half = ? AND minute = ?",
         match_id, half, minute,
+    )
+    return cur.fetchone() is not None
+
+
+def post_processing_exists(conn: pyodbc.Connection, match_id: str) -> bool:
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM post_processing WHERE match_id = ?",
+        match_id,
     )
     return cur.fetchone() is not None
 
@@ -265,6 +275,74 @@ def write_clip_result(
     except Exception:
         conn.rollback()
         raise
+
+
+def write_post_processing_result(
+    conn: pyodbc.Connection,
+    row: MinuteRow,
+    team0_name: Optional[str] = None,
+    team1_name: Optional[str] = None,
+    team0_colour: Optional[str] = None,
+    team1_colour: Optional[str] = None,
+    video_blob_path: Optional[str] = None,
+) -> dict:
+    """Upsert the whole-match aggregate row into post_processing."""
+    cur = conn.cursor()
+    blob_path = video_blob_path or row.clip_blob_path
+    cur.execute(
+        "SELECT 1 FROM post_processing WHERE match_id = ?",
+        row.match_id,
+    )
+    exists = cur.fetchone() is not None
+    if exists:
+        cur.execute(
+            "UPDATE post_processing SET "
+            "  team0_name = ?, team1_name = ?, team0_colour = ?, team1_colour = ?, "
+            "  frames_team0 = ?, frames_team1 = ?, frames_loose = ?, frames_oof = ?, "
+            "  passes_completed_t0 = ?, passes_completed_t1 = ?, "
+            "  interceptions_t0 = ?, interceptions_t1 = ?, "
+            "  ball_lost_t0 = ?, ball_lost_t1 = ?, video_blob_path = ?, "
+            "  processed_at = SYSUTCDATETIME() "
+            "WHERE match_id = ?",
+            team0_name, team1_name, team0_colour, team1_colour,
+            row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
+            row.passes_completed_t0, row.passes_completed_t1,
+            row.interceptions_t0, row.interceptions_t1,
+            row.ball_lost_t0, row.ball_lost_t1, blob_path,
+            row.match_id,
+        )
+    else:
+        cur.execute(
+            "INSERT INTO post_processing (match_id, team0_name, team1_name, team0_colour, team1_colour, "
+            "  frames_team0, frames_team1, frames_loose, frames_oof, "
+            "  passes_completed_t0, passes_completed_t1, interceptions_t0, interceptions_t1, "
+            "  ball_lost_t0, ball_lost_t1, video_blob_path) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            row.match_id, team0_name, team1_name, team0_colour, team1_colour,
+            row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
+            row.passes_completed_t0, row.passes_completed_t1,
+            row.interceptions_t0, row.interceptions_t1,
+            row.ball_lost_t0, row.ball_lost_t1, blob_path,
+        )
+    conn.commit()
+    return {
+        "match_id": row.match_id,
+        "team0_name": team0_name,
+        "team1_name": team1_name,
+        "team0_colour": team0_colour,
+        "team1_colour": team1_colour,
+        "frames_team0": row.frames_team0,
+        "frames_team1": row.frames_team1,
+        "frames_loose": row.frames_loose,
+        "frames_oof": row.frames_oof,
+        "passes_completed_t0": row.passes_completed_t0,
+        "passes_completed_t1": row.passes_completed_t1,
+        "interceptions_t0": row.interceptions_t0,
+        "interceptions_t1": row.interceptions_t1,
+        "ball_lost_t0": row.ball_lost_t0,
+        "ball_lost_t1": row.ball_lost_t1,
+        "video_blob_path": blob_path,
+    }
 
 
 def _apply_prior_correction(cur, match_id: str, c: PriorCorrection) -> None:

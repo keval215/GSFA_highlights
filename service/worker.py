@@ -32,7 +32,7 @@ from service.blob import ClipBlobStore
 from service.clip_processor import process_clip
 from service.post_processing.post_processing import process_match_video
 from service.queueing import ClipMessage, ClipQueue
-from service.session import MatchSessionManager, ModelBundle
+from service.session import MatchSession, MatchSessionManager, ModelBundle
 from service.stats import is_expected
 
 log = logging.getLogger("gsfa.worker")
@@ -52,6 +52,7 @@ class Worker:
         self.conn    = db.get_conn()
         self._last_clip_seconds: float | None = None
         self._last_dequeue_count = 0
+        self._last_post_processing_error: dict | None = None
 
     # ------------------------------------------------------------------
 
@@ -150,9 +151,14 @@ class Worker:
         shutil.rmtree(job_dir, ignore_errors=True)
 
     def _handle_post_processing(self, msg: ClipMessage) -> None:
+        # Delete immediately — no lease renewal, no automatic retry. A whole-match
+        # job that dies partway through (in-process exception, container OOM-kill,
+        # VM shutdown) must never be silently redelivered and reprocessed on top
+        # of leftover state; recovery for a failed job is a manual re-upload.
+        self.queue.delete(msg)
+
         if db.post_processing_exists(self.conn, msg.match_id):
             log.info("post-processing %s already processed — dropping message", msg.match_id)
-            self.queue.delete(msg)
             self.blob.delete(msg.blob_path)
             return
 
@@ -160,31 +166,46 @@ class Worker:
                         msg.team0_name, msg.team1_name,
                         msg.team0_colour, msg.team1_colour)
 
-        session = self.manager.get_or_create(msg.match_id)
+        # Own session, constructed directly (never through MatchSessionManager,
+        # never stored there) — isolated from the live-clip path for this match
+        # and never reused across attempts, so every run starts from clean
+        # tracker/ball/carrier/pass-FSM state.
+        session = MatchSession(msg.match_id, self.models)
         job_dir = config.JOBS_DIR / msg.match_id
         video_path = job_dir / "post_processing.mp4"
-        self.blob.download_to(msg.blob_path, video_path)
 
         t_start = time.monotonic()
-        result = process_match_video(session, str(video_path), blob_path=msg.blob_path)
+        try:
+            self.blob.download_to(msg.blob_path, video_path)
+            result = process_match_video(session, str(video_path), blob_path=msg.blob_path)
 
-        db.write_post_processing_result(
-            self.conn,
-            result.minute_row,
-            team0_name=msg.team0_name,
-            team1_name=msg.team1_name,
-            team0_colour=msg.team0_colour,
-            team1_colour=msg.team1_colour,
-            video_blob_path=msg.blob_path,
-        )
+            db.write_post_processing_result(
+                self.conn,
+                result.minute_row,
+                team0_name=msg.team0_name,
+                team1_name=msg.team1_name,
+                team0_colour=msg.team0_colour,
+                team1_colour=msg.team1_colour,
+                video_blob_path=msg.blob_path,
+            )
 
-        self._last_clip_seconds = round(time.monotonic() - t_start, 1)
-        log.info("post-processing %s completed in %.1fs (events=%d)",
-                 msg.match_id, self._last_clip_seconds, len(result.events))
-
-        self.queue.delete(msg)
-        self.blob.delete(msg.blob_path)
-        shutil.rmtree(job_dir, ignore_errors=True)
+            self._last_clip_seconds = round(time.monotonic() - t_start, 1)
+            log.info("post-processing %s completed in %.1fs (events=%d)",
+                     msg.match_id, self._last_clip_seconds, len(result.events))
+        except Exception as exc:
+            elapsed = round(time.monotonic() - t_start, 1)
+            log.exception(
+                "post-processing FAILED match=%s blob=%s elapsed=%.1fs — %s",
+                msg.match_id, msg.blob_path, elapsed, exc,
+            )
+            self._last_post_processing_error = {
+                "match_id": msg.match_id,
+                "error": str(exc),
+                "at": time.time(),
+            }
+        finally:
+            self.blob.delete(msg.blob_path)
+            shutil.rmtree(job_dir, ignore_errors=True)
 
     # ------------------------------------------------------------------
 
@@ -221,6 +242,7 @@ class Worker:
             "active_matches": self.manager.active_matches,
             # 1 clip ≈ 1 minute of match time; queue depth approximates lag.
             "seconds_behind_live": depth * 60 if depth is not None else None,
+            "last_post_processing_error": self._last_post_processing_error,
         }
         try:
             config.HEARTBEAT_FILE.write_text(json.dumps(hb), encoding="utf-8")

@@ -82,7 +82,11 @@ CLIP_BATCH_WINDOW     = int(os.environ.get("CLIP_BATCH_WINDOW", "16"))
 # Ball is now produced by the unified detection model every processed frame
 # (no separate stride). BallTracker still coasts via Kalman on gaps.
 DEVICE                = os.environ.get("DEVICE", "cuda")          # detectors + classifier
-FIT_SAMPLE_EVERY      = int(os.environ.get("FIT_SAMPLE_EVERY", "5"))
+# Team-fit torso-crop sampling stride (every Nth raw frame of whatever video
+# collect_crops() is given). Bounds crop volume for whole-match /post-processing
+# uploads (which hand collect_crops the entire match, not just a ~60s clip) while
+# still sampling frames spread across the full file.
+FIT_SAMPLE_EVERY      = int(os.environ.get("FIT_SAMPLE_EVERY", "30"))
 FIT_SILHOUETTE_MIN    = float(os.environ.get("FIT_SILHOUETTE_MIN", "0.20"))
 QUEUE_VISIBILITY_SEC  = int(os.environ.get("QUEUE_VISIBILITY_SEC", "90"))
 MAX_DEQUEUE_COUNT     = int(os.environ.get("MAX_DEQUEUE_COUNT", "3"))

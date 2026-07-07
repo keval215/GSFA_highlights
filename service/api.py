@@ -208,6 +208,7 @@ def metrics():
         "active_matches": hb.get("active_matches", []),
         "gpu_memory_allocated_mb": hb.get("gpu_mem_mb"),
         "last_dequeue_count": hb.get("last_dequeue_count"),
+        "last_post_processing_error": hb.get("last_post_processing_error"),
     }
 
 

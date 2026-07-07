@@ -37,7 +37,18 @@
       "Bash(dir D:\\\\GSFA_highlights\\\\highlights\\\\Lib\\\\site-packages\\\\boxmot)",
       "Bash(findstr /R \"[a-z]\")",
       "PowerShell(Get-ChildItem D:\\\\GSFA_highlights -File | Select-Object Name, Length; \\(Get-Content D:\\\\GSFA_highlights\\\\video_analysis\\\\possession.py | Measure-Object -Line\\).Lines; \\(Get-Content D:\\\\GSFA_highlights\\\\shots_on_t.py | Measure-Object -Line\\).Lines; \\(Get-Content D:\\\\GSFA_highlights\\\\video_analysis\\\\simple_homography.py | Measure-Object -Line\\).Lines)",
-      "Bash(python -m py_compile tracking/player_tracker.py)"
+      "Bash(python -m py_compile tracking/player_tracker.py)",
+      "Bash(find . -maxdepth 2 -iname \"CLAUDE.md\" -not -path \"*/node_modules/*\")",
+      "Bash(ls docs/)",
+      "Bash(git remote *)",
+      "Bash(claude mcp *)",
+      "mcp__supermemory__whoAmI",
+      "mcp__supermemory__listProjects",
+      "mcp__supermemory__memory",
+      "mcp__supermemory__fetch-graph-data",
+      "mcp__supermemory__recall",
+      "mcp__supermemory__memory-graph",
+      "Bash(ssh *)"
     ]
   }
 }

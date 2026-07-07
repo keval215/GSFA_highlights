@@ -12,6 +12,8 @@ services:
     volumes:
       - /mnt/data:/mnt/data
     restart: unless-stopped
+    mem_limit: 3g
+    mem_reservation: 1g
 
   worker:
     image: gsfa-highlights:latest
@@ -28,5 +30,7 @@ services:
       - /mnt/data:/mnt/data
       - /opt/gsfa-highlights/models:/opt/gsfa-highlights/models:ro
     restart: unless-stopped
+    mem_limit: 21g
+    mem_reservation: 6g
     depends_on:
       - api

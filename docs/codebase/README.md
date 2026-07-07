@@ -32,17 +32,16 @@ GSFA_highlights/
 ├── tracking/             BoT-SORT multi-object tracker (stable per-player track IDs)
 ├── video_analysis/       The possession/pass pipeline + homography/keypoint tooling
 ├── service/              The production cloud service (FastAPI ingest + GPU worker + Azure + SQL)
-├── sql/                  Azure SQL schema (matches, minute_stats, events, callback_outbox)
-├── scripts/              Standalone experiments (OCR scoreboard, team-classification probes)
+├── sql/                  Azure SQL schema (matches, minute_stats, post_processing, events, callback_outbox)
+├── scripts/              Standalone tools (CSV export, clip upload, team-diagnostics)
 ├── data/                 (gitignored) cache pkls + output videos/PNGs
 ├── docs/                 Documentation (this tree + API.md + azure_deploy.md)
 ├── heatmap.py            Standalone: player position heatmaps via homography
 ├── shots_on_t.py         Standalone: shots-on-target detector (Colab/experimental)
-├── test.py               Scratch/throwaway
 ├── Dockerfile            Single image for both api + worker
 ├── docker-compose.yml    Runs api (CPU) + worker (GPU) from that image
 ├── requirements.txt      Local dev deps   |  requirements-service.txt  Service deps
-└── .github/workflows/    CI: push to `test` → SSH redeploy on the Azure VM
+└── .github/workflows/    CI: push to `main` → SSH redeploy on the Azure VM
 ```
 
 ---
@@ -57,7 +56,7 @@ GSFA_highlights/
 | `video_analysis/` | [video_analysis/README.md](video_analysis/README.md) | `possession.py` (the core CV→stats pipeline) + homography tools |
 | `service/` | [service/README.md](service/README.md) | The production service: ingest API, GPU worker, sessions, stats, DB, Azure adapters |
 | `sql/` | [sql/README.md](sql/README.md) | Database schema + why cumulative numbers are computed on read |
-| scripts / standalone | [scripts/README.md](scripts/README.md) | `heatmap.py`, `shots_on_t.py`, `scripts/*`, `test.py` |
+| scripts / standalone | [scripts/README.md](scripts/README.md) | `heatmap.py`, `shots_on_t.py`, `scripts/*` (CSV export, clip upload) |
 | infra | [infra/README.md](infra/README.md) | Dockerfile, compose, CI/CD, requirements, environment |
 
 ---
@@ -87,5 +86,6 @@ once and reused — see [ARCHITECTURE.md](ARCHITECTURE.md).
   you don't go looking for behaviour that was intentionally left out.
 - **"Connections"** sections name the exact modules/functions on each side of a link.
 - Code references are written as `file.py:symbol` so they're easy to grep.
-- These docs were generated from a read-through of the source on branch `test`. If code
-  and docs disagree, the code wins — please update the relevant file here.
+- These docs were generated from a read-through of the source (CI now deploys off
+  `main`, not `test`). If code and docs disagree, the code wins — please update the
+  relevant file here.

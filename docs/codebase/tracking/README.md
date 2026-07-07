@@ -24,8 +24,11 @@ Assign each player a **stable `track_id`** across frames so the pass FSM can say
   1. Build an `N×6` dets array (`x1,y1,x2,y2,conf,cls`).
   2. Build an `N×emb_dim` embeddings matrix from each `Detection.embedding`; detections
      without an embedding get an all-zeros row.
-  3. Call `tracker.update(...)` and write the returned `track_id` back onto each
-     `Detection` **in place** (matched by boxmot's `det_ind` column).
+  3. Call `tracker.update(...)` and write the returned `track_id` **and**
+     `smoothed_bbox` (BoT-SORT's Kalman-smoothed box, from the same output row) back onto
+     each `Detection` **in place** (matched by boxmot's `det_ind` column). The raw
+     `.bbox` is left untouched so foot-zone/carrier geometry doesn't shift; only drawing
+     uses the smoothed box, to avoid per-frame jitter.
 - `track_buffer` keeps lost tracks alive ~2 s (scaled by frame rate).
 
 ### What it does NOT do
@@ -46,6 +49,7 @@ cosine-distance-on-zero-vector `RuntimeWarning` is filtered in `service/worker.p
 ### Connections
 - **Reads** `Detection.bbox`, `.confidence`, `.embedding` (set by `GSFATeamClassifier`).
 - **Writes** `Detection.track_id`, consumed by `CarrierEngine` and `PassEventTracker` in
-  `video_analysis/possession.py`.
+  `video_analysis/possession.py`; also writes `Detection.smoothed_bbox`, consumed only by
+  drawing code (not by carrier/pass geometry).
 - Instantiated in local mode by `possession.py::run` and in service mode held on the
   `MatchSession` (`service/session.py`), so track IDs persist across clips within a match.

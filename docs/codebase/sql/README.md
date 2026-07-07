@@ -40,6 +40,10 @@ These explain *why* the tables look the way they do (see also `service/db.py`):
 - `matches.team0/1_name` + `team0/1_colour` — used for cluster→team-name resolution
   (`db.get_team_specs` returns them only if **all four** are present).
 - `minute_stats.frames_team0/1/loose/oof` — possession denominator is `team0+team1`.
+- `minute_stats.clip_duration_seconds` — the client-supplied clip length from
+  `POST /api/clips`, stored verbatim (no derivation). Nullable — rows written before this
+  column existed are `NULL`. Used only by the CSV export (`scripts/get_csv.py`) for
+  duration/pass-density math, not by the pipeline.
 - `minute_stats.revision` — incremented by retroactive corrections.
 - `post_processing.match_id` — the whole-match primary key; there is no half/minute or
   revision column because the table represents one processed match file.

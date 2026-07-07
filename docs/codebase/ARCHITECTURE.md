@@ -115,7 +115,8 @@ Defined in `detectors/player_detector.py`:
 - **`Detection`** — one detected object: `bbox`, `confidence`, `foot_point`,
   `centre_point`, and the mutable fields later stages fill in:
   `team_id` (TeamClassifier), `is_goalkeeper` (GoalkeeperDetector),
-  `track_id` (PlayerTracker), `embedding` (SigLIP, set during `classify`).
+  `track_id` (PlayerTracker), `embedding` (SigLIP, set during `classify`), `smoothed_bbox`
+  (PlayerTracker's Kalman-smoothed box, drawing-only — `bbox` itself is untouched).
 - **`FrameDetections`** — all detections for one frame, split into
   `players`, `referees`, `goal_posts`, `balls`, and `all`.
 
@@ -177,9 +178,10 @@ the service will fail fast at startup until `stats.py` is updated too.
 The pipeline used to run **two** detection models per frame (YOLOv11 for players + RF-DETR
 for the ball). It now runs **one** unified YOLOv11m model that emits all four classes
 (`active_player`, `ball`, `goal_post`, `referee`). The ball comes free from the same
-forward pass via `best_ball()`. Rationale and the full change list are in
-[`yolo_change.md`](../../yolo_change.md). Out of scope for that change (still use older
-detectors): `heatmap.py`, `shots_on_t.py`.
+forward pass via `best_ball()`. The old separate RF-DETR ball model and its weights were
+removed entirely; the write-up that tracked this migration (`yolo_change.md`) has since
+been deleted from the repo. Out of scope for that change (still use older detectors):
+`heatmap.py`, `shots_on_t.py`.
 
 ---
 

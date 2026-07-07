@@ -6,7 +6,7 @@ How the service is packaged, deployed, configured, and tested.
 |---|---|
 | `Dockerfile` | Single image for both `api` and `worker` |
 | `docker-compose.yml` | Runs `api` (CPU) + `worker` (GPU) from that image |
-| `.github/workflows/deploy.yml` | CI/CD: push to `test` → SSH redeploy on the Azure VM |
+| `.github/workflows/deploy.yml` | CI/CD: push to `main` → SSH redeploy on the Azure VM |
 | `requirements.txt` | Local dev dependencies |
 | `requirements-service.txt` | Service (Docker image) dependencies |
 | `tests/` | Automated unit tests (`test_stats.py`, `test_db.py`, `test_notifier.py`) |
@@ -45,17 +45,15 @@ How the service is packaged, deployed, configured, and tested.
 > named `PLAYER_WEIGHTS=/path/...` and crash at startup with `FileNotFoundError`.
 
 ## `.github/workflows/deploy.yml`
-- Trigger: push to **`test`** (or manual `workflow_dispatch`).
-- Action: SSH to the VM, `git reset --hard origin/test`, remove any legacy standalone
+- Trigger: push to **`main`** (or manual `workflow_dispatch`). Previously watched `test`;
+  retargeted to `main` so the repo's main branch is what deploys.
+- Action: SSH to the VM, `git reset --hard origin/main`, remove any legacy standalone
   container, `docker compose up -d --build --remove-orphans`, prune old images.
 - Requires repo secrets: `AZURE_VM_HOST`, `AZURE_VM_USER`, `AZURE_VM_SSH_KEY`,
   optional `AZURE_VM_PORT`.
 - Expected VM layout: repo at `/opt/gsfa-highlights/repo`, env at
   `/etc/gsfa-highlights.env`, models at `/opt/gsfa-highlights/models`, Docker +
   nvidia-container-toolkit installed.
-
-> Note: `main` is the repository's main branch, but the deploy workflow currently watches
-> `test`. Confirm which branch is "production" before relying on a push to deploy.
 
 ## Requirements
 - `requirements-service.txt` — the image's deps: CV stack (opencv-headless, ultralytics,

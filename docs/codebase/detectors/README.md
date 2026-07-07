@@ -24,7 +24,9 @@ through the entire pipeline — see [ARCHITECTURE.md §4](../ARCHITECTURE.md).
 - Defines the two core data types the whole codebase passes around:
   - **`Detection`** — `class_id`, `class_name`, `bbox`, `confidence`, `foot_point`,
     `centre_point`, plus mutable fields filled in by later stages: `team_id`,
-    `is_goalkeeper`, `track_id`, `embedding`.
+    `is_goalkeeper`, `track_id`, `embedding`, `smoothed_bbox` (BoT-SORT's Kalman-smoothed
+    box, set by `PlayerTracker` — used for jitter-free drawing; `bbox` itself is left
+    untouched so foot-zone/carrier geometry is unaffected).
   - **`FrameDetections`** — `frame_idx`, `timestamp_s`, and the lists
     `players` / `referees` / `goal_posts` / `balls` / `all`.
 - Inference entry points:
@@ -36,6 +38,10 @@ through the entire pipeline — see [ARCHITECTURE.md §4](../ARCHITECTURE.md).
   (`conf=0.20`), then each box is dropped unless it clears its class threshold —
   `ball_conf=0.25`, everything else `player_conf=0.50`. The small/fast ball gets a
   lower bar than players.
+- `PlayerDetector.__init__` takes an optional `classes: list[int] | None` — a class
+  allow-list passed straight through to the Ultralytics call (`conf`, `imgsz`, `half`,
+  and now `classes`). `None` (default) keeps all four classes, unchanged for the
+  service/VM path.
 - fp16 on CUDA (`half=True`) for throughput; fp32 on CPU.
 - `draw()` renders boxes + foot points for debugging.
 
@@ -44,8 +50,8 @@ through the entire pipeline — see [ARCHITECTURE.md §4](../ARCHITECTURE.md).
   single best ball is `video_analysis/possession.py::best_ball`.
 - Does **not** assign teams, goalkeepers, or track IDs — those fields start `None`/`False`
   and are filled by later stages.
-- Does **not** know about RF-DETR any more (the old separate ball model was removed; see
-  [`yolo_change.md`](../../../yolo_change.md)).
+- Does **not** know about RF-DETR any more (the old separate ball model was removed
+  entirely — the ball is now `class_id=1` in the unified model's own output).
 - The module-level `MODEL_PATH` default is a local Windows path; the service overrides it
   via `config.player_weights()`.
 

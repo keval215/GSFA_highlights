@@ -106,7 +106,8 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   `video_analysis.possession`'s — the cross-module contract guard.
 
 ## `clip_processor.py`
-- `process_clip(...)` decodes the clip, strides to `TARGET_PROCESS_FPS`, and processes in
+- `process_clip(session, clip_path, half, minute, clip_duration_seconds, clip_blob_path=None)`
+  decodes the clip, strides to `TARGET_PROCESS_FPS`, and processes in
   windows of `CLIP_BATCH_WINDOW` frames:
   - **Pass 1 (batched, stateless GPU):** `player_det.detect_batch` + `team_clf.classify_batch`
     + `best_ball` per frame.
@@ -118,7 +119,10 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   share becomes a `PriorCorrection` (one UPDATE to the previous row), the rest hits this
   minute's counters.
 - Builds `EventRow`s from `session.new_events()`; returns a `ClipResult`
-  (`minute_row`, `correction`, `events`).
+  (`minute_row`, `correction`, `events`). `clip_duration_seconds` (the client-supplied
+  clip length) is threaded straight through into `MinuteCounters.to_minute_row(...)` and
+  stored on `MinuteRow.clip_duration_seconds` — used only for the CSV export
+  (`scripts/get_csv.py`), not for any pipeline math.
 - **Does NOT** render, write SQL, or send callbacks — it returns plain data the worker
   persists. Per-stage timing is logged at DEBUG.
 
@@ -143,23 +147,31 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - **Cumulative-on-read:** `minute_stats` stores raw per-minute counters; `cumulative_read`
   `SUM()`s over rows ≤ the current minute. Never stores cumulative numbers.
 - **`write_clip_result(...)` = one transaction:** apply prior correction (revision += 1) →
-  upsert this minute row (PK = `(match_id, half, minute)` ⇒ replay overwrites) → insert
-  events → advance match progress → insert the **outbox** row with a fresh cumulative
-  payload. Rolls back on any error.
+  upsert this minute row (PK = `(match_id, half, minute)` ⇒ replay overwrites, now also
+  storing `clip_duration_seconds`) → insert events → advance match progress → insert the
+  **outbox** row with a fresh cumulative payload. Rolls back on any error.
 - Match upsert (`ensure_match`, COALESCE so later clips can't overwrite), atomic minute
   claim (`claim_next_minute` via `UPDATE...OUTPUT`), `minute_exists`, `get_match_progress`,
   `get_team_specs` (only if both teams have name **and** colour). Outbox ops
   (`fetch_pending`, `mark_sent`, `mark_failed`) for the notifier.
-- `write_post_processing_result(...)` upserts the new whole-match `post_processing` table
-  keyed by `match_id` and stores the team metadata snapshot alongside the raw counters.
+- `post_processing_exists(conn, match_id)` / `write_post_processing_result(...)` — dedupe
+  check and upsert for the new whole-match `post_processing` table, keyed by `match_id`;
+  stores the team metadata snapshot alongside the raw counters. Unlike `write_clip_result`,
+  this does **not** touch `callback_outbox` — no advance-stats callback is sent for
+  whole-match uploads.
 
 ## `blob.py` / `queueing.py` (Azure adapters)
 - `blob.py` — `ClipBlobStore`: container ensure/exists/upload/download/delete. Blob layout
-  `<container>/<match_id>/<half>_<minute>.mp4`. Delete is best-effort (orphan is harmless).
+  `<container>/<match_id>/<half>_<minute>.mp4`, plus `post_processing_blob_name(match_id)`
+  → `<container>/<match_id>/post_processing.mp4` for the whole-match upload path. Delete
+  is best-effort (orphan is harmless).
 - `queueing.py` — `ClipQueue`: enqueue/dequeue/`delete`/`defer`/`move_to_poison`/`depths`.
-  Carries `ordering_retries` in the message body across re-sends; malformed messages go
-  straight to poison. Azure Queue is only **approximately** FIFO — ordering is enforced in
-  `worker.py`, not here.
+  `ClipMessage.kind` is `"clip"` (default) or `"post_processing"`; `enqueue(...)` takes
+  `clip_duration_seconds` and an optional `kind` + team metadata, and
+  `enqueue_post_processing(...)` is a thin wrapper that always sends `kind=post_processing`
+  with just `match_id`/`blob_path`/team fields (no half/minute). Carries `ordering_retries`
+  in the message body across re-sends; malformed messages go straight to poison. Azure
+  Queue is only **approximately** FIFO — ordering is enforced in `worker.py`, not here.
 
 ## `notifier.py` (outbox sender)
 - After commit, POSTs each pending `callback_outbox` row (strict `(half, minute)` order)

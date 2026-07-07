@@ -171,6 +171,50 @@ Liveness check. Returns 200 when the worker is alive, 503 when it has not writte
 
 ---
 
+### GET /metrics
+
+Operational metrics. Always 200; fields are `null` when the worker has not run yet.
+
+**Response:**
+
+```json
+{
+  "queue_depth": 3,
+  "poison_depth": 0,
+  "last_clip_processing_seconds": 87.4,
+  "seconds_behind_live": 180,
+  "active_matches": ["match_abc123"],
+  "gpu_memory_allocated_mb": 2048,
+  "last_dequeue_count": 1
+}
+```
+
+| Field | Description |
+|---|---|
+| `queue_depth` | Clips waiting to be processed |
+| `poison_depth` | Clips that failed > `MAX_DEQUEUE_COUNT` times (manual inspection needed) |
+| `last_clip_processing_seconds` | Wall time for the most recent clip |
+| `seconds_behind_live` | `queue_depth × 60` — approximate lag behind live match time |
+| `active_matches` | Match IDs with live MatchSession state in the worker |
+| `gpu_memory_allocated_mb` | `torch.cuda.memory_allocated()` in MB |
+| `last_dequeue_count` | Azure dequeue count of the last message (> 1 means it was retried) |
+
+---
+
+## Callback (outbox) — POST to the advance-stats endpoint
+
+After each clip is processed and its SQL transaction commits, the worker POSTs the cumulative stats to the tournament-duelz advance-stats endpoint:
+
+```
+POST {CALLBACK_URL}/v1/pvt/tournament-duelz/{match_id}/advance-stats
+X-Super-Admin-Key: {SUPER_ADMIN_KEY}
+```
+
+`CALLBACK_URL` is the **base origin only** (e.g. `https://dev-server.clubduelz.in`); `match_id` is the tournament-duel ObjectID and fills the `{id}` path segment. Each POST is a **full overwrite** of the duel's `advance_stats` subdocument and the server replies `204 No Content`.
+
+Deliveries are strictly ordered by `(half, minute)`. Retry: up to `CALLBACK_RETRIES` attempts with exponential backoff (`CALLBACK_BACKOFF_BASE × 2^n` seconds); a `401` (bad/missing super-admin key) fails fast without retrying. On permanent failure the row is marked `failed` in SQL but processing continues.
+
+Note: the whole-match `POST /post-processing` path does **not** go through this callback — `write_post_processing_result` upserts `post_processing` directly and no outbox row is created for it.
 
 If `CALLBACK_URL` or `SUPER_ADMIN_KEY` is unset, rows stay `pending` in `callback_outbox` — no stats are lost.
 

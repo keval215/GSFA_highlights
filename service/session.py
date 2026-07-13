@@ -27,6 +27,7 @@ import cv2
 import joblib
 import numpy as np
 
+from detectors.goalkeeper_detector import GoalkeeperDetector
 from detectors.player_detector import PlayerDetector
 from team_classifier.team_classifier import GSFATeamClassifier, TeamSpec
 from tracking.player_tracker import PlayerTracker
@@ -146,6 +147,12 @@ class MatchSession:
         self.fit_status: str = "pending"           # pending | ok | refit | failed
         self._fit_crops_clip1: list[np.ndarray] = []  # kept only while status == refit
 
+        self.gk_det: Optional[GoalkeeperDetector] = None
+        self._gk_colour_invalid = False   # set once if the DB colours fail to parse
+        # No fit stage — GoalkeeperDetector just needs the two reference
+        # colours (known constants), so construction is cheap and retried
+        # every clip via ensure_gk_ready() until the DB has both colours.
+
         # Cross-clip CV state (Conflict 2). PlayerTracker frame rate uses the
         # processed-frame rate because it only ever sees strided frames.
         self.tracker      = PlayerTracker(fps=config.TARGET_PROCESS_FPS,
@@ -248,6 +255,36 @@ class MatchSession:
         except (ValueError, RuntimeError) as exc:
             log.warning("[%s] team colour resolution failed (%s) — "
                         "falling back to team0/team1 labels", self.match_id, exc)
+
+    # ------------------------------------------------------------------
+    # Goalkeeper classifier readiness (no fit stage — just needs the two
+    # reference colours from the DB; cheap enough to retry every clip)
+    # ------------------------------------------------------------------
+
+    def ensure_gk_ready(self) -> None:
+        """Construct self.gk_det if not already done and the DB now has both
+        GK reference colours. No-op once constructed. Never raises — GK
+        classification is an overlay on top of the core possession stats."""
+        if self.gk_det is not None or self._gk_colour_invalid:
+            return
+
+        conn = db.get_conn()
+        try:
+            gk_colours = db.get_gk_colours(conn, self.match_id)
+        finally:
+            conn.close()
+        if not gk_colours:
+            return
+
+        team0_gk_colour, team1_gk_colour = gk_colours
+        try:
+            self.gk_det = GoalkeeperDetector(team0_gk_colour, team1_gk_colour)
+            log.info("[%s] GK classifier ready (colours=%s/%s)",
+                     self.match_id, team0_gk_colour, team1_gk_colour)
+        except ValueError as exc:
+            self._gk_colour_invalid = True
+            log.warning("[%s] invalid GK colour (%s) — GK classification disabled",
+                        self.match_id, exc)
 
     # ------------------------------------------------------------------
     # Per-clip processing hooks (called by clip_processor)

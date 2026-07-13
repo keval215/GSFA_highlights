@@ -164,7 +164,8 @@ class Worker:
 
         db.ensure_match(self.conn, msg.match_id,
                         msg.team0_name, msg.team1_name,
-                        msg.team0_colour, msg.team1_colour)
+                        msg.team0_colour, msg.team1_colour,
+                        msg.team0_gk_colour, msg.team1_gk_colour)
 
         # Own session, constructed directly (never through MatchSessionManager,
         # never stored there) — isolated from the live-clip path for this match
@@ -186,6 +187,8 @@ class Worker:
                 team1_name=msg.team1_name,
                 team0_colour=msg.team0_colour,
                 team1_colour=msg.team1_colour,
+                team0_gk_colour=msg.team0_gk_colour,
+                team1_gk_colour=msg.team1_gk_colour,
                 video_blob_path=msg.blob_path,
             )
 

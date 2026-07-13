@@ -48,7 +48,8 @@
       "mcp__supermemory__fetch-graph-data",
       "mcp__supermemory__recall",
       "mcp__supermemory__memory-graph",
-      "Bash(ssh *)"
+      "Bash(ssh *)",
+      "PowerShell(gh run *)"
     ]
   }
 }

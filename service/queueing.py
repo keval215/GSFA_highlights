@@ -8,7 +8,8 @@ One message per work item:
     post-processing:
         {"kind": "post_processing", "match_id": str, "blob_path": str,
          "team0_name": str | null, "team1_name": str | null,
-         "team0_colour": str | null, "team1_colour": str | null}
+         "team0_colour": str | null, "team1_colour": str | null,
+         "team0_gk_colour": str | null, "team1_gk_colour": str | null}
 
 Azure Queue Storage is approximately FIFO, so the worker enforces ordering
 itself (see worker.py); this module only provides enqueue/dequeue/poison
@@ -40,6 +41,8 @@ class ClipMessage:
     team1_name: Optional[str] = None
     team0_colour: Optional[str] = None
     team1_colour: Optional[str] = None
+    team0_gk_colour: Optional[str] = None
+    team1_gk_colour: Optional[str] = None
     # How many times the worker deferred this message because it arrived
     # out of order (carried in the message body across re-sends).
     ordering_retries: int = 0
@@ -103,6 +106,8 @@ class ClipQueue:
         team1_name: Optional[str] = None,
         team0_colour: Optional[str] = None,
         team1_colour: Optional[str] = None,
+        team0_gk_colour: Optional[str] = None,
+        team1_gk_colour: Optional[str] = None,
     ) -> None:
         body = {
             "kind": "post_processing",
@@ -117,6 +122,10 @@ class ClipQueue:
             body["team0_colour"] = team0_colour
         if team1_colour is not None:
             body["team1_colour"] = team1_colour
+        if team0_gk_colour is not None:
+            body["team0_gk_colour"] = team0_gk_colour
+        if team1_gk_colour is not None:
+            body["team1_gk_colour"] = team1_gk_colour
         self._queue.send_message(json.dumps(body))
 
     # --- consumer (worker) ---
@@ -146,6 +155,8 @@ class ClipQueue:
                 team1_name       = body.get("team1_name"),
                 team0_colour     = body.get("team0_colour"),
                 team1_colour     = body.get("team1_colour"),
+                team0_gk_colour  = body.get("team0_gk_colour"),
+                team1_gk_colour  = body.get("team1_gk_colour"),
                 ordering_retries = int(body.get("ordering_retries", 0)),
                 message_id       = m.id,
                 pop_receipt      = m.pop_receipt,
@@ -171,6 +182,8 @@ class ClipQueue:
                 "team1_name": msg.team1_name,
                 "team0_colour": msg.team0_colour,
                 "team1_colour": msg.team1_colour,
+                "team0_gk_colour": msg.team0_gk_colour,
+                "team1_gk_colour": msg.team1_gk_colour,
                 "ordering_retries": msg.ordering_retries + 1,
             }),
             visibility_timeout=delay_seconds,
@@ -186,6 +199,8 @@ class ClipQueue:
             "team1_name": msg.team1_name,
             "team0_colour": msg.team0_colour,
             "team1_colour": msg.team1_colour,
+            "team0_gk_colour": msg.team0_gk_colour,
+            "team1_gk_colour": msg.team1_gk_colour,
         }))
         self._queue.delete_message(msg.message_id, msg.pop_receipt)
 

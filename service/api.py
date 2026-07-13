@@ -2,19 +2,25 @@
 service/api.py — FastAPI ingestion endpoint (no GPU).
 
 POST /api/clips  multipart/form-data:
-    file (60 s mp4), match_id
-        [+ clip_duration_seconds, half, minute, team0_name, team1_name,
-             team0_colour, team1_colour]
+    file (60 s mp4), match_id, team0_colour, team1_colour, team0_gk_colour,
+    team1_gk_colour
+        [+ clip_duration_seconds, half, minute, team0_name, team1_name]
   → upload blob clips/<match_id>/<half>_<minute>.mp4
     → enqueue {"match_id","half","minute","blob_path","clip_duration_seconds"}
   → 202 in ~1–2 s. Processing is never inline.
 
 POST /post-processing  multipart/form-data:
-    file (whole-match mp4), match_id
-        [+ team0_name, team1_name, team0_colour, team1_colour]
+    file (whole-match mp4), match_id, team0_colour, team1_colour,
+    team0_gk_colour, team1_gk_colour
+        [+ team0_name, team1_name]
     → upload blob clips/<match_id>/post_processing.mp4
         → enqueue {"kind":"post_processing", ...}
     → 200 once the upload is fully received and queued.
+
+All four colour fields are required on every request (not just the first
+clip) — team0_colour/team1_colour drive outfield cluster→team resolution,
+team0_gk_colour/team1_gk_colour drive goalkeeper colour-matching. team_name
+fields remain optional.
 
 half and minute are optional (default 0). Duplicate (match_id, half, minute)
 ⇒ 202 with "duplicate": true, clip skipped.
@@ -96,15 +102,17 @@ def _startup() -> None:
 
 @app.post("/api/clips", status_code=202)
 async def post_clip(
-    file: UploadFile = File(...),
+    file: UploadFile = File(...),   
     match_id: str = Form(...),
     clip_duration_seconds: float = Form(...),
     half: Optional[int] = Form(None),
     minute: Optional[int] = Form(None),
     team0_name: Optional[str] = Form(None),
     team1_name: Optional[str] = Form(None),
-    team0_colour: Optional[str] = Form(None),   # hex "#FF6600" or CSS name "orange"
-    team1_colour: Optional[str] = Form(None),
+    team0_colour: str = Form(...),   # hex "#FF6600" or CSS name "orange"
+    team1_colour: str = Form(...),
+    team0_gk_colour: str = Form(...),
+    team1_gk_colour: str = Form(...),
 ):
     # Basic hygiene only (no auth in v1 — NSG restricts port 8000).
     if file.content_type not in ("video/mp4", "application/octet-stream", None):
@@ -122,7 +130,8 @@ async def post_clip(
     conn = db.get_conn()
     try:
         db.ensure_match(conn, match_id, team0_name, team1_name,
-                        team0_colour, team1_colour)
+                        team0_colour, team1_colour,
+                        team0_gk_colour, team1_gk_colour)
         resolved_half   = half   if half   is not None else 1
         resolved_minute = minute if minute is not None else db.claim_next_minute(conn, match_id, resolved_half)
         already_processed = db.minute_exists(conn, match_id, resolved_half, resolved_minute)
@@ -149,8 +158,10 @@ async def post_processing(
     match_id: str = Form(...),
     team0_name: Optional[str] = Form(None),
     team1_name: Optional[str] = Form(None),
-    team0_colour: Optional[str] = Form(None),
-    team1_colour: Optional[str] = Form(None),
+    team0_colour: str = Form(...),
+    team1_colour: str = Form(...),
+    team0_gk_colour: str = Form(...),
+    team1_gk_colour: str = Form(...),
 ):
     if file.content_type not in ("video/mp4", "application/octet-stream", None):
         raise HTTPException(415, f"unsupported content type: {file.content_type}")
@@ -159,7 +170,9 @@ async def post_processing(
 
     conn = db.get_conn()
     try:
-        db.ensure_match(conn, match_id, team0_name, team1_name, team0_colour, team1_colour)
+        db.ensure_match(conn, match_id, team0_name, team1_name,
+                        team0_colour, team1_colour,
+                        team0_gk_colour, team1_gk_colour)
         already_processed = db.post_processing_exists(conn, match_id)
     finally:
         conn.close()
@@ -177,6 +190,8 @@ async def post_processing(
         team1_name=team1_name,
         team0_colour=team0_colour,
         team1_colour=team1_colour,
+        team0_gk_colour=team0_gk_colour,
+        team1_gk_colour=team1_gk_colour,
     )
     size_mb = (file.size / 1024**2) if file.size else 0.0
     log.info("received post-processing video %s (%.1f MB) — queued", match_id, size_mb)

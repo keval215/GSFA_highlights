@@ -1,40 +1,40 @@
 """
-detectors/goalkeeper_detector.py — Goalkeeper detection and team assignment
+detectors/goalkeeper_detector.py — Goalkeeper classification by jersey colour
 
-Two-stage pipeline:
-  Stage 1 — Fit (accumulated over video):
-    Sample frames → for each goal post, find the closest active_player.
-    Average those positions → 2 GK zone centroids (one per goal).
+No fit stage, no goal-post dependency, no tracking. A player IS the
+goalkeeper because their jersey colour matches team0_gk_colour or
+team1_gk_colour — the reference colours are known constants (supplied by the
+caller), so there is nothing to learn from video.
 
-  Stage 2 — Team assignment (during fit):
-    Compute centroid of team 0 and team 1 outfield players across frames.
-    Assign each GK zone to the team whose centroid is closer.
+Runs independently of GSFATeamClassifier ("in parallel"): both classifiers
+read the same frame + detections and write to the same Detection objects,
+but neither depends on the other's output.
 
-  Per-frame classify:
-    For each detected goal post → find closest active_player →
-    mark is_goalkeeper=True, set team_id from fitted assignment.
-
-Cache: one pkl per match (data/cache/<video_stem>_goalkeeper.pkl).
+Per-frame classify():
+    For each of the two reference colours, find the single player in the
+    frame whose jersey colour is closest to it. If that distance is under
+    max_colour_dist, mark that player is_goalkeeper=True, team_id=<that
+    team>. No match under threshold ⇒ no GK flagged for that team this
+    frame (a bad/no match is not forced onto the "least bad" player).
 
 Import:
     from detectors.goalkeeper_detector import GoalkeeperDetector
 
 Usage:
     from detectors.player_detector import PlayerDetector
+    from team_classifier.team_classifier import GSFATeamClassifier
     from detectors.goalkeeper_detector import GoalkeeperDetector
-    from team_classifier.colour_histogram import ColourHistogramTeamClassifier
 
     player_det = PlayerDetector()
-    team_clf   = ColourHistogramTeamClassifier()
+    team_clf   = GSFATeamClassifier()
     team_clf.fit_from_video_or_load(video_path, player_det)
 
-    gk_det = GoalkeeperDetector()
-    gk_det.fit_from_video_or_load(video_path, player_det, team_clf)
+    gk_det = GoalkeeperDetector(team0_gk_colour="#00FF00", team1_gk_colour="black")
 
     # Per-frame:
     dets = player_det.detect(frame, frame_idx=fidx, fps=fps)
-    team_clf.classify(frame, dets)
-    gk_det.classify(dets)           # marks is_goalkeeper + corrects team_id
+    team_clf.classify(frame, dets)   # independent of gk_det
+    gk_det.classify(frame, dets)     # independent of team_clf; marks is_goalkeeper + team_id
 
     for p in dets.players:
         if p.is_goalkeeper:
@@ -44,34 +44,26 @@ Usage:
 from __future__ import annotations
 
 import math
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-import cv2
-import joblib
 import numpy as np
 
-from detectors.cache import cache_path
+from team_classifier.team_classifier import GSFATeamClassifier
 
 if TYPE_CHECKING:
-    from detectors.player_detector import Detection, FrameDetections, PlayerDetector
+    from detectors.player_detector import FrameDetections
 
 
 # ---------------------------------------------------------------------------
-# HELPERS
+# CONSTANTS
 # ---------------------------------------------------------------------------
 
-def _dist(a: tuple, b: tuple) -> float:
-    return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
-
-
-def _centroid(points: list[tuple]) -> tuple[float, float]:
-    if not points:
-        return (0.0, 0.0)
-    return (
-        float(np.mean([p[0] for p in points])),
-        float(np.mean([p[1] for p in points])),
-    )
+# Max Euclidean distance, in GSFATeamClassifier's cylindrical HSV colour
+# space (_hsv_vec: [sat*cos(hue), sat*sin(hue), val], sat/val in 0-255), for
+# a player's jersey colour to count as a match to a GK reference colour.
+# First-pass placeholder — needs calibration against real footage, same as
+# BLUR_THRESHOLD in team_classifier/team_classifier.py.
+MAX_GK_COLOUR_DIST = 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -80,215 +72,66 @@ def _centroid(points: list[tuple]) -> tuple[float, float]:
 
 class GoalkeeperDetector:
     """
-    Identifies the two goalkeepers and assigns each to a team.
-
-    Fit once per match (or load from cache). Classify per frame.
-    Does NOT require tracking — works on raw per-frame detections.
+    Classifies goalkeepers by direct jersey-colour match against two known
+    reference colours. No fit step — construct once per match and classify
+    from frame 1.
     """
 
-    def __init__(self) -> None:
-        self._gk_zones: list[tuple[float, float]] | None = None
-        # avg pixel position (cx, cy) of GK near each goal post
-        # index 0 = left goal post, index 1 = right goal post (sorted by x)
-
-        self._gk_teams: list[int] | None = None
-        # team_id assigned to each GK zone [team_for_left_post, team_for_right_post]
-
-        self._is_fitted: bool = False
-
-    # ------------------------------------------------------------------
-    # Fit
-    # ------------------------------------------------------------------
-
-    def fit_from_video(
+    def __init__(
         self,
-        video_path:   str,
-        player_det:   "PlayerDetector",
-        team_clf,                          # GSFATeamClassifier or ColourHistogramTeamClassifier
-        sample_every: int       = 30,
-        save_path:    Path|None = None,
-        progress:     bool      = True,
+        team0_gk_colour: str,
+        team1_gk_colour: str,
+        max_colour_dist: float = MAX_GK_COLOUR_DIST,
     ) -> None:
-        """
-        Scan video at 1fps, accumulate closest-player-to-each-post positions
-        and team centroids, compute GK zones and team assignments, save pkl.
-        """
-        if save_path is None:
-            save_path = cache_path(video_path, "goalkeeper")
-
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise IOError(f"GoalkeeperDetector: cannot open {video_path}")
-
-        total_f = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps     = cap.get(cv2.CAP_PROP_FPS) or 30.0
-
-        # Accumulators
-        post_nearest: list[list[tuple]] = [[], []]  # [left_post_positions, right_post_positions]
-        team_positions: dict[int, list[tuple]] = {0: [], 1: []}
-        fidx = 0
-
-        if progress:
-            print("[GoalkeeperDetector] Scanning video for GK zones …")
-
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            if fidx % sample_every == 0:
-                dets = player_det.detect(frame, frame_idx=fidx, fps=fps)
-                team_clf.classify(frame, dets)
-
-                # Need at least 1 goal post and 2 players
-                if dets.goal_posts and len(dets.players) >= 2:
-
-                    # Sort posts left → right by x pixel position
-                    posts = sorted(dets.goal_posts, key=lambda p: p.foot_point[0])
-
-                    for post_idx, post in enumerate(posts[:2]):
-                        # Player closest to this goal post
-                        closest = min(
-                            dets.players,
-                            key=lambda p: _dist(p.foot_point, post.foot_point),
-                        )
-                        post_nearest[post_idx].append(closest.foot_point)
-
-                    # Accumulate outfield team positions (all classified players)
-                    for p in dets.players:
-                        if p.team_id in (0, 1):
-                            team_positions[p.team_id].append(p.foot_point)
-
-                if progress and (fidx // sample_every) % 100 == 0:
-                    pct = fidx / max(1, total_f) * 100
-                    print(f"  frame {fidx:>5}/{total_f} ({pct:.0f}%)  "
-                          f"post0={len(post_nearest[0])}  post1={len(post_nearest[1])}")
-
-            fidx += 1
-
-        cap.release()
-
-        if not post_nearest[0] and not post_nearest[1]:
-            raise RuntimeError(
-                "GoalkeeperDetector: no goal posts detected during fit. "
-                "Check PlayerDetector or video path."
-            )
-
-        # GK zone centroids (avg pixel position of closest player per post)
-        self._gk_zones = [
-            _centroid(post_nearest[0]) if post_nearest[0] else (0.0, 0.0),
-            _centroid(post_nearest[1]) if post_nearest[1] else (0.0, 0.0),
+        self.max_colour_dist = max_colour_dist
+        self._ref_vec: list[np.ndarray] = [
+            GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team0_gk_colour)),
+            GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team1_gk_colour)),
         ]
-
-        # Team centroids
-        t0_centroid = _centroid(team_positions[0])
-        t1_centroid = _centroid(team_positions[1])
-
-        # Assign each GK zone to closer team
-        self._gk_teams = []
-        for zone in self._gk_zones:
-            d0 = _dist(zone, t0_centroid)
-            d1 = _dist(zone, t1_centroid)
-            self._gk_teams.append(0 if d0 <= d1 else 1)
-
-        self._is_fitted = True
-
-        if progress:
-            print(f"[GoalkeeperDetector] GK zone 0 (left post)  → "
-                  f"pixel ({self._gk_zones[0][0]:.0f}, {self._gk_zones[0][1]:.0f})  "
-                  f"→ team {self._gk_teams[0]}")
-            print(f"[GoalkeeperDetector] GK zone 1 (right post) → "
-                  f"pixel ({self._gk_zones[1][0]:.0f}, {self._gk_zones[1][1]:.0f})  "
-                  f"→ team {self._gk_teams[1]}")
-
-        self.save(save_path)
-        if progress:
-            print(f"[GoalkeeperDetector] Saved → {save_path}")
-
-    def fit_from_video_or_load(
-        self,
-        video_path:   str,
-        player_det:   "PlayerDetector",
-        team_clf,
-        sample_every: int       = 30,
-        save_path:    Path|None = None,
-        progress:     bool      = True,
-        force_refit:  bool      = False,
-    ) -> None:
-        """Load from cache if exists; otherwise fit and save. One pkl per match."""
-        if save_path is None:
-            save_path = cache_path(video_path, "goalkeeper")
-
-        if not force_refit and Path(save_path).exists():
-            loaded = GoalkeeperDetector.load(save_path, progress=progress)
-            self._gk_zones  = loaded._gk_zones
-            self._gk_teams  = loaded._gk_teams
-            self._is_fitted = loaded._is_fitted
-        else:
-            self.fit_from_video(
-                video_path   = video_path,
-                player_det   = player_det,
-                team_clf     = team_clf,
-                sample_every = sample_every,
-                save_path    = save_path,
-                progress     = progress,
-            )
 
     # ------------------------------------------------------------------
     # Per-frame classify
     # ------------------------------------------------------------------
 
-    def classify(self, detections: "FrameDetections") -> None:
+    def classify(self, frame: np.ndarray, detections: "FrameDetections") -> None:
         """
-        For each detected goal post: find the closest active_player,
-        mark is_goalkeeper=True, override team_id with the fitted assignment.
+        For each reference colour (team 0, team 1), find the single closest-
+        matching player in this frame and — if within max_colour_dist — mark
+        it is_goalkeeper=True, team_id=<that team>.
 
-        Modifies detections.players in-place.
-        Requires team_clf.classify() to have already run on the same detections.
+        Modifies detections.players in-place. Independent of GSFATeamClassifier
+        (does not read or require p.team_id / p.embedding from an outfield
+        classifier having already run).
         """
-        if not self._is_fitted:
-            raise RuntimeError(
-                "GoalkeeperDetector not fitted. "
-                "Call fit_from_video_or_load() first."
-            )
-
-        # Reset goalkeeper flags
         for p in detections.players:
             p.is_goalkeeper = False
 
-        if not detections.goal_posts or not detections.players:
+        if not detections.players:
             return
 
-        # Sort posts left → right (consistent with fit phase)
-        posts = sorted(detections.goal_posts, key=lambda p: p.foot_point[0])
+        # Colour vector per player (None if crop is empty/unusable).
+        player_vecs: list[np.ndarray | None] = []
+        for p in detections.players:
+            crop = GSFATeamClassifier._torso_crop(frame, p.bbox)
+            if crop.shape[0] > 0 and crop.shape[1] > 0:
+                player_vecs.append(GSFATeamClassifier._mean_colour_vec([crop]))
+            else:
+                player_vecs.append(None)
 
-        for post_idx, post in enumerate(posts[:2]):
-            closest: "Detection" = min(
-                detections.players,
-                key=lambda p: _dist(p.foot_point, post.foot_point),
-            )
-            closest.is_goalkeeper = True
-            closest.team_id = self._gk_teams[post_idx]
-
-    # ------------------------------------------------------------------
-    # Save / Load
-    # ------------------------------------------------------------------
-
-    def save(self, path: Path) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self, path)
-
-    @staticmethod
-    def load(
-        path:     Path,
-        progress: bool = True,
-    ) -> "GoalkeeperDetector":
-        if progress:
-            print(f"[GoalkeeperDetector] Loading from {path} …")
-        obj = joblib.load(path)
-        if progress:
-            print("[GoalkeeperDetector] Loaded.")
-        return obj
+        for team_id in (0, 1):
+            ref = self._ref_vec[team_id]
+            best_idx: int | None = None
+            best_dist = math.inf
+            for i, vec in enumerate(player_vecs):
+                if vec is None:
+                    continue
+                dist = float(np.linalg.norm(vec - ref))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_idx = i
+            if best_idx is not None and best_dist < self.max_colour_dist:
+                detections.players[best_idx].is_goalkeeper = True
+                detections.players[best_idx].team_id = team_id
 
     # ------------------------------------------------------------------
     # Visualisation
@@ -303,6 +146,8 @@ class GoalkeeperDetector:
         Draw players with GK highlighted in yellow.
         Non-GK players use team colours (blue=0, red=1).
         """
+        import cv2
+
         TEAM_COLOURS = {
             0:    (255, 80,   0),
             1:    (0,   80, 255),

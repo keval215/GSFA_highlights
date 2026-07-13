@@ -26,7 +26,7 @@ from service.stats import EventRow, MinuteRow, PriorCorrection, build_payload
 
 __all__ = [
     "EventRow", "MinuteRow", "PriorCorrection", "OutboxRow", "build_payload",
-    "get_conn", "ensure_match", "get_team_specs", "get_match_progress",
+    "get_conn", "ensure_match", "get_team_specs", "get_gk_colours", "get_match_progress",
     "claim_next_minute", "minute_exists", "cumulative_read", "write_clip_result",
     "post_processing_exists", "write_post_processing_result",
     "fetch_pending", "mark_sent", "mark_failed",
@@ -53,6 +53,8 @@ def ensure_match(
     team1_name: Optional[str] = None,
     team0_colour: Optional[str] = None,
     team1_colour: Optional[str] = None,
+    team0_gk_colour: Optional[str] = None,
+    team1_gk_colour: Optional[str] = None,
 ) -> None:
     """First clip auto-creates the match; later calls only fill in missing
     metadata. Commits."""
@@ -61,20 +63,25 @@ def ensure_match(
     if cur.fetchone() is None:
         cur.execute(
             "INSERT INTO matches "
-            "  (match_id, team0_name, team1_name, team0_colour, team1_colour) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "  (match_id, team0_name, team1_name, team0_colour, team1_colour, "
+            "   team0_gk_colour, team1_gk_colour) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             match_id, team0_name, team1_name, team0_colour, team1_colour,
+            team0_gk_colour, team1_gk_colour,
         )
     else:
         cur.execute(
             "UPDATE matches SET "
-            "  team0_name   = COALESCE(team0_name, ?), "
-            "  team1_name   = COALESCE(team1_name, ?), "
-            "  team0_colour = COALESCE(team0_colour, ?), "
-            "  team1_colour = COALESCE(team1_colour, ?), "
+            "  team0_name      = COALESCE(team0_name, ?), "
+            "  team1_name      = COALESCE(team1_name, ?), "
+            "  team0_colour    = COALESCE(team0_colour, ?), "
+            "  team1_colour    = COALESCE(team1_colour, ?), "
+            "  team0_gk_colour = COALESCE(team0_gk_colour, ?), "
+            "  team1_gk_colour = COALESCE(team1_gk_colour, ?), "
             "  updated_at = SYSUTCDATETIME() "
             "WHERE match_id = ?",
-            team0_name, team1_name, team0_colour, team1_colour, match_id,
+            team0_name, team1_name, team0_colour, team1_colour,
+            team0_gk_colour, team1_gk_colour, match_id,
         )
     conn.commit()
 
@@ -95,6 +102,23 @@ def get_team_specs(
     if row is None or not all(row):
         return None
     return [(str(row[0]), str(row[1])), (str(row[2]), str(row[3]))]
+
+
+def get_gk_colours(
+    conn: pyodbc.Connection, match_id: str,
+) -> Optional[tuple[str, str]]:
+    """(team0_gk_colour, team1_gk_colour) for goalkeeper colour-matching, or
+    None unless BOTH are set. Independent of team0_name/team1_name — GK
+    classification only needs the two reference colours, not display names."""
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT team0_gk_colour, team1_gk_colour FROM matches WHERE match_id = ?",
+        match_id,
+    )
+    row = cur.fetchone()
+    if row is None or not all(row):
+        return None
+    return (str(row[0]), str(row[1]))
 
 
 def get_match_progress(conn: pyodbc.Connection, match_id: str) -> Optional[tuple[int, int]]:
@@ -284,6 +308,8 @@ def write_post_processing_result(
     team1_name: Optional[str] = None,
     team0_colour: Optional[str] = None,
     team1_colour: Optional[str] = None,
+    team0_gk_colour: Optional[str] = None,
+    team1_gk_colour: Optional[str] = None,
     video_blob_path: Optional[str] = None,
 ) -> dict:
     """Upsert the whole-match aggregate row into post_processing."""
@@ -298,6 +324,7 @@ def write_post_processing_result(
         cur.execute(
             "UPDATE post_processing SET "
             "  team0_name = ?, team1_name = ?, team0_colour = ?, team1_colour = ?, "
+            "  team0_gk_colour = ?, team1_gk_colour = ?, "
             "  frames_team0 = ?, frames_team1 = ?, frames_loose = ?, frames_oof = ?, "
             "  passes_completed_t0 = ?, passes_completed_t1 = ?, "
             "  interceptions_t0 = ?, interceptions_t1 = ?, "
@@ -305,6 +332,7 @@ def write_post_processing_result(
             "  processed_at = SYSUTCDATETIME() "
             "WHERE match_id = ?",
             team0_name, team1_name, team0_colour, team1_colour,
+            team0_gk_colour, team1_gk_colour,
             row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
             row.passes_completed_t0, row.passes_completed_t1,
             row.interceptions_t0, row.interceptions_t1,
@@ -314,11 +342,13 @@ def write_post_processing_result(
     else:
         cur.execute(
             "INSERT INTO post_processing (match_id, team0_name, team1_name, team0_colour, team1_colour, "
+            "  team0_gk_colour, team1_gk_colour, "
             "  frames_team0, frames_team1, frames_loose, frames_oof, "
             "  passes_completed_t0, passes_completed_t1, interceptions_t0, interceptions_t1, "
             "  ball_lost_t0, ball_lost_t1, video_blob_path) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             row.match_id, team0_name, team1_name, team0_colour, team1_colour,
+            team0_gk_colour, team1_gk_colour,
             row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
             row.passes_completed_t0, row.passes_completed_t1,
             row.interceptions_t0, row.interceptions_t1,
@@ -331,6 +361,8 @@ def write_post_processing_result(
         "team1_name": team1_name,
         "team0_colour": team0_colour,
         "team1_colour": team1_colour,
+        "team0_gk_colour": team0_gk_colour,
+        "team1_gk_colour": team1_gk_colour,
         "frames_team0": row.frames_team0,
         "frames_team1": row.frames_team1,
         "frames_loose": row.frames_loose,

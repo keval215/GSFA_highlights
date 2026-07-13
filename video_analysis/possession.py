@@ -39,7 +39,7 @@ from tracking.player_tracker import PlayerTracker
 
 PLAYER_MODEL_WEIGHTS = r"C:\Users\Admin\OneDrive\Desktop\CZ\aiff_v2.pt"
 DEVICE               = "cuda"   # CUDA is available locally; "cpu" works but is slow at imgsz 960
-VIDEO_PATH         = r"C:\Users\Admin\Downloads\aiff_1\1.mp4"
+VIDEO_PATH         = r"C:\Users\Admin\Downloads\Final_Test.mp4"
 OUTPUT_PATH        = r"data/output/possession_output.mp4"
 
 # Ball detection now comes from the unified YOLOv11m model via PlayerDetector
@@ -64,7 +64,7 @@ TRAVEL_TIMEOUT_FRAMES = 22  # processed frames (~1.47 s)
 
 # Debug / speed run
 TARGET_PROCESS_FPS   = 15.0        # analyse every Nth frame
-PROCESS_DURATION_SEC = 60       # stop after this many seconds
+PROCESS_DURATION_SEC = 480      # stop after this many seconds
 
 # Visuals
 POSSESS_BAR_H   = 42
@@ -822,17 +822,22 @@ def draw_frame(
 # MAIN
 # ---------------------------------------------------------------------------
 
-def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH) -> None:
+def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH,
+        team0_gk_colour: str | None = None, team1_gk_colour: str | None = None) -> None:
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
     print("[Possession] Initialising models …")
     player_det = PlayerDetector(model_path=PLAYER_MODEL_WEIGHTS, device=DEVICE)   # unified model: players + ball + refs + posts
 
-    team_clf = GSFATeamClassifier()
+    team_clf = GSFATeamClassifier(device=DEVICE)
     team_clf.fit_from_video_or_load(video_path, player_det)
 
-    gk_det = GoalkeeperDetector()
-    gk_det.fit_from_video_or_load(video_path, player_det, team_clf)
+    # team0_gk_colour/team1_gk_colour: hex ("#FF6600") or CSS name ("orange"),
+    # same format as team colours. Both required to enable GK classification
+    # (direct jersey-colour match, runs independently of team_clf); omit
+    # either to skip GK classification entirely.
+    gk_det = (GoalkeeperDetector(team0_gk_colour, team1_gk_colour)
+              if team0_gk_colour and team1_gk_colour else None)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -896,7 +901,8 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH) -> None:
 
         player_dets = player_det.detect(frame, fidx, fps)
         team_clf.classify(frame, player_dets)
-        gk_det.classify(player_dets)
+        if gk_det is not None:
+            gk_det.classify(frame, player_dets)
         tracker.update(frame, player_dets.players)
 
         raw_ball         = best_ball(player_dets)

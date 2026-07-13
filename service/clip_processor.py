@@ -52,6 +52,7 @@ def process_clip(
         raise RuntimeError(
             f"process_clip called before team fit for match {session.match_id}"
         )
+    session.ensure_gk_ready()
 
     cap = cv2.VideoCapture(clip_path)
     if not cap.isOpened():
@@ -87,6 +88,9 @@ def process_clip(
         p1 = time.perf_counter(); t["player_det"] += (p1 - p0) * 1000
 
         session.team_clf.classify_batch(win_frames, dets_list)
+        if session.gk_det is not None:
+            for frame, dets in zip(win_frames, dets_list):
+                session.gk_det.classify(frame, dets)
         p2 = time.perf_counter(); t["team_clf"] += (p2 - p1) * 1000
 
         # Ball now comes from the same unified detection pass: pick the best ball

@@ -103,9 +103,14 @@ class GSFATeamClassifier:
 
     def __init__(
         self,
-        device:     str = "cpu",
+        device:     str = "cuda",
         batch_size: int = 32,
     ) -> None:
+        assert device.startswith("cuda") and torch.cuda.is_available(), (
+            f"GSFATeamClassifier requires CUDA (got device={device!r}, "
+            f"torch.cuda.is_available()={torch.cuda.is_available()}) — "
+            "no CPU fallback."
+        )
         self._classifier  = TeamClassifier(device=device, batch_size=batch_size)
         self._use_fast_processor()
         self._is_fitted   = False

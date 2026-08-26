@@ -1,7 +1,8 @@
-# `tracking/`
+# `modules/tracking/`
 
 Assign each player a **stable `track_id`** across frames so the pass FSM can say "player
-#7 passed to player #9".
+#7 passed to player #9". (Moved here from top-level `tracking/` — same file, package
+reorganised under `modules/`.)
 
 | File | One-line role |
 |---|---|
@@ -13,6 +14,14 @@ Assign each player a **stable `track_id`** across frames so the pass FSM can say
 ## `player_tracker.py` — `PlayerTracker`
 
 ### What it does
+- `__init__(fps, cmc_method="ecc", *, track_high_thresh=0.5, track_low_thresh=0.1,
+  new_track_thresh=0.6, match_thresh=0.8, proximity_thresh=0.5, appearance_thresh=0.25,
+  track_buffer_frames_at_30fps=60)` — the six BoT-SORT association thresholds and the
+  track-buffer length were previously hardcoded inside `__init__`; they are now
+  constructor parameters (defaults unchanged) so a `RulesetConfig` can override them per
+  sport — 11-a-side football has more simultaneous tracks/occlusion than 5-a-side futsal,
+  a prime candidate to actually need different values (see
+  [rulesets/README.md](../rulesets/README.md)).
 - Wraps **BoT-SORT** from `boxmot` (`BotSort`) with:
   - Built-in **ECC global motion compensation** (`cmc_method="ecc"` by default) so IDs
     survive fast camera pans.
@@ -49,7 +58,9 @@ cosine-distance-on-zero-vector `RuntimeWarning` is filtered in `service/worker.p
 ### Connections
 - **Reads** `Detection.bbox`, `.confidence`, `.embedding` (set by `GSFATeamClassifier`).
 - **Writes** `Detection.track_id`, consumed by `CarrierEngine` and `PassEventTracker` in
-  `video_analysis/possession.py`; also writes `Detection.smoothed_bbox`, consumed only by
-  drawing code (not by carrier/pass geometry).
-- Instantiated in local mode by `possession.py::run` and in service mode held on the
-  `MatchSession` (`service/session.py`), so track IDs persist across clips within a match.
+  `modules/possession/`; also writes `Detection.smoothed_bbox`, consumed only by drawing
+  code (not by carrier/pass geometry).
+- Instantiated in local mode by `video_analysis/run.py::run` and in service mode held on
+  the `MatchSession` (`service/session.py`), so track IDs persist across clips within a
+  match. In both cases the six BoT-SORT thresholds + track-buffer length come from the
+  match/run's `RulesetConfig`.

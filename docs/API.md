@@ -29,7 +29,8 @@ Set in `/etc/gsfa-highlights.env` (loaded via docker-compose `env_file`).
 |---|---|---|---|
 | `AZURE_STORAGE_CONNECTION_STRING` | yes | — | Blob + Queue storage connection string |
 | `SQL_CONN_STR` | yes | — | pyodbc connection string for Azure SQL `gsfa_stats` |
-| `PLAYER_WEIGHTS` | yes | — | Absolute VM path to the unified YOLOv11m weights (players + ball + refs + posts) |
+| `PLAYER_WEIGHTS` | yes | — | Absolute VM path to the unified YOLOv11m weights for the `futsal` ruleset (players + ball + refs + posts) |
+| `<RULESET>_PLAYER_WEIGHTS` | only if that ruleset is used | — | e.g. `CLASSIC_PLAYER_WEIGHTS` — weights path for a non-`futsal` ruleset (see `rulesets/`). Not set on any deployment yet; selecting `ruleset=classic` fails fast at model load until it is |
 | `CALLBACK_URL` | no | `""` | Base origin of the main app (e.g. `https://dev-server.clubduelz.in`), no path. The worker appends `/v1/pvt/tournament-duelz/{match_id}/advance-stats`. Empty = disable |
 | `SUPER_ADMIN_KEY` | no | `""` | `X-Super-Admin-Key` sent with each advance-stats POST. Empty = disable callback |
 | `CALLBACK_RETRIES` | no | `3` | Max delivery attempts per outbox row before it is marked `failed` |
@@ -43,6 +44,8 @@ Set in `/etc/gsfa-highlights.env` (loaded via docker-compose `env_file`).
 | `TARGET_PROCESS_FPS` | no | `15` | Frames per second sampled from each clip |
 | `CMC_METHOD` | no | `ecc` | BoT-SORT camera-motion compensation: `ecc` / `sof` / `orb` / `sift` / `none` |
 | `CLIP_BATCH_WINDOW` | no | `16` | Frames per GPU batch in the two-pass processor |
+| `FIT_SAMPLE_EVERY` | no | `30` | Torso-crop sampling stride for team fitting (every Nth raw frame). Raised from 5 to bound crop volume on whole-match `/post-processing` uploads |
+| `FIT_SILHOUETTE_MIN` | no | `0.20` | Minimum KMeans silhouette score on clip-1 crops before the fit is accepted; below this, clip 2's crops are combined in and refit (once) |
 | `MAX_UPLOAD_GB` | no | `2` | Max clip file size accepted by POST /api/clips |
 | `API_PORT` | no | `8000` | API listen port (for documentation only; pass to uvicorn separately) |
 | `SESSION_IDLE_EVICT_S` | no | `1800` | Seconds of inactivity before a MatchSession is evicted (30 min) |
@@ -64,13 +67,19 @@ Upload a 60-second clip for processing. Returns immediately (~1–2 s); processi
 | `clip_duration_seconds` | number | yes | Duration supplied by the client for this clip, stored directly in SQL. |
 | `half` | integer | yes | Match half (>= 1). |
 | `minute` | integer | yes | Minute within the half (>= 1). |
+| `team0_colour` | string | **yes** | Jersey colour for team 0 — hex (`"#FF6600"` / `"FF6600"`) or CSS name (`"orange"`). Used for cluster-to-team mapping. |
+| `team1_colour` | string | **yes** | Jersey colour for team 1. |
+| `team0_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 0, same format. Used for direct colour-match GK classification (`modules/detectors/goalkeeper_detector.py`) — no fit step. |
+| `team1_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 1. |
 | `team0_name` | string | no | Display name for team 0 (e.g. `"FCA"`). Used in callback payload keys. |
 | `team1_name` | string | no | Display name for team 1 (e.g. `"Rovers"`). |
-| `team0_colour` | string | no | Jersey colour for team 0 — hex (`"#FF6600"` / `"FF6600"`) or CSS name (`"orange"`). Used for cluster-to-team mapping. |
-| `team1_colour` | string | no | Jersey colour for team 1. |
+| `ruleset` | string | no | `"futsal"` (default) or `"classic"` — selects the sport-tuning profile (`rulesets/`). Only used on the **first** request for a `match_id` (creates the match row); later requests ignore it — a match's ruleset is fixed for its lifetime. Unknown value ⇒ `422`. |
 
-Team name/colour fields on the first clip initialise the match; subsequent clips only fill in values that are still `NULL` (later calls cannot overwrite).
-The server stores `clip_duration_seconds` exactly as sent by the client.
+All four colour fields (`team0_colour`, `team1_colour`, `team0_gk_colour`,
+`team1_gk_colour`) are required on **every** request, not just the first clip. Team
+name/colour fields on the first clip initialise the match; subsequent clips only fill in
+name values that are still `NULL` (later calls cannot overwrite, and cannot change the
+ruleset). The server stores `clip_duration_seconds` exactly as sent by the client.
 
 **202 Accepted — new clip enqueued:**
 
@@ -101,7 +110,7 @@ The server stores `clip_duration_seconds` exactly as sent by the client.
 |---|---|
 | 413 | File exceeds `MAX_UPLOAD_GB` |
 | 415 | Unsupported content type |
-| 422 | `half` or `minute` < 1 |
+| 422 | `half` or `minute` < 1, or unknown `ruleset` |
 
 ---
 
@@ -115,12 +124,19 @@ Upload a whole-match video for post-match analysis. The API returns `200` as soo
 |---|---|---|---|
 | `file` | binary (mp4) | yes | Whole-match video. `video/mp4` or `application/octet-stream`. Max `MAX_UPLOAD_GB` GB. |
 | `match_id` | string | yes | Unique match identifier. Used as the SQL primary key in `post_processing`. |
+| `team0_colour` | string | **yes** | Jersey colour for team 0. |
+| `team1_colour` | string | **yes** | Jersey colour for team 1. |
+| `team0_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 0. |
+| `team1_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 1. |
 | `team0_name` | string | no | Display name for team 0. Stored in `matches` and `post_processing`. |
 | `team1_name` | string | no | Display name for team 1. |
-| `team0_colour` | string | no | Jersey colour for team 0. |
-| `team1_colour` | string | no | Jersey colour for team 1. |
+| `ruleset` | string | no | `"futsal"` (default) or `"classic"`. Same semantics as on `POST /api/clips` — first-request-wins, unknown value ⇒ `422`. |
 
-The server uploads the file to blob storage at `clips/<match_id>/post_processing.mp4`, enqueues a background job, and deletes the blob after processing completes.
+The server uploads the file to blob storage at `clips/<match_id>/post_processing.mp4`,
+enqueues a background job, and deletes the blob after processing completes — whether it
+succeeds or fails. A failed whole-match job is **not retried**; the failure is recorded
+and surfaced via `GET /metrics`' `last_post_processing_error`, and recovery is a manual
+re-upload (see `service/README.md`'s worker section).
 
 **200 OK — received and queued:**
 
@@ -185,7 +201,8 @@ Operational metrics. Always 200; fields are `null` when the worker has not run y
   "seconds_behind_live": 180,
   "active_matches": ["match_abc123"],
   "gpu_memory_allocated_mb": 2048,
-  "last_dequeue_count": 1
+  "last_dequeue_count": 1,
+  "last_post_processing_error": null
 }
 ```
 
@@ -198,6 +215,7 @@ Operational metrics. Always 200; fields are `null` when the worker has not run y
 | `active_matches` | Match IDs with live MatchSession state in the worker |
 | `gpu_memory_allocated_mb` | `torch.cuda.memory_allocated()` in MB |
 | `last_dequeue_count` | Azure dequeue count of the last message (> 1 means it was retried) |
+| `last_post_processing_error` | `null`, or `{"match_id", "error", "at"}` for the most recent whole-match `/post-processing` job that failed. Whole-match jobs are never auto-retried (see `POST /post-processing` above), so this is the only signal that one needs a manual re-upload. |
 
 ---
 

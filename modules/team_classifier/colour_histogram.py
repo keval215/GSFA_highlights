@@ -1,5 +1,5 @@
 """
-team_classifier/colour_histogram.py — Colour histogram team classification
+modules/team_classifier/colour_histogram.py — Colour histogram team classification
 
 Pipeline:
   torso crops → HSV histogram (H: 64 bins + S: 32 bins) → (N, 96)
@@ -10,7 +10,7 @@ Pipeline:
   No UMAP — KMeans runs directly on histogram features for cleaner separation.
 
 Import:
-    from team_classifier.colour_histogram import ColourHistogramTeamClassifier
+    from modules.team_classifier.colour_histogram import ColourHistogramTeamClassifier
 
 Usage:
     clf = ColourHistogramTeamClassifier()
@@ -34,10 +34,10 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
-from detectors.cache import cache_path
+from modules.detectors.cache import cache_path
 
 if TYPE_CHECKING:
-    from detectors.player_detector import FrameDetections, PlayerDetector
+    from modules.detectors.player_detector import FrameDetections, PlayerDetector
 
 
 # ---------------------------------------------------------------------------

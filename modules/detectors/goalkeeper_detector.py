@@ -1,5 +1,5 @@
 """
-detectors/goalkeeper_detector.py — Goalkeeper classification by jersey colour
+modules/detectors/goalkeeper_detector.py — Goalkeeper classification by jersey colour
 
 No fit stage, no goal-post dependency, no tracking. A player IS the
 goalkeeper because their jersey colour matches team0_gk_colour or
@@ -18,12 +18,12 @@ Per-frame classify():
     frame (a bad/no match is not forced onto the "least bad" player).
 
 Import:
-    from detectors.goalkeeper_detector import GoalkeeperDetector
+    from modules.detectors.goalkeeper_detector import GoalkeeperDetector
 
 Usage:
-    from detectors.player_detector import PlayerDetector
-    from team_classifier.team_classifier import GSFATeamClassifier
-    from detectors.goalkeeper_detector import GoalkeeperDetector
+    from modules.detectors.player_detector import PlayerDetector
+    from modules.team_classifier.team_classifier import GSFATeamClassifier
+    from modules.detectors.goalkeeper_detector import GoalkeeperDetector
 
     player_det = PlayerDetector()
     team_clf   = GSFATeamClassifier()
@@ -48,10 +48,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from team_classifier.team_classifier import GSFATeamClassifier
+from modules.team_classifier.team_classifier import (
+    CENTRE_CROP_RATIO,
+    TORSO_RATIO,
+    GSFATeamClassifier,
+)
 
 if TYPE_CHECKING:
-    from detectors.player_detector import FrameDetections
+    from modules.detectors.player_detector import FrameDetections
 
 
 # ---------------------------------------------------------------------------
@@ -82,8 +86,17 @@ class GoalkeeperDetector:
         team0_gk_colour: str,
         team1_gk_colour: str,
         max_colour_dist: float = MAX_GK_COLOUR_DIST,
+        *,
+        torso_ratio: float = TORSO_RATIO,
+        centre_crop_ratio: float = CENTRE_CROP_RATIO,
     ) -> None:
         self.max_colour_dist = max_colour_dist
+        # Same camera-framing tuning as GSFATeamClassifier — kept independent
+        # (not read from a GSFATeamClassifier instance) since this detector
+        # deliberately runs without depending on one; a ruleset config
+        # supplies matching values to both.
+        self.torso_ratio = torso_ratio
+        self.centre_crop_ratio = centre_crop_ratio
         self._ref_vec: list[np.ndarray] = [
             GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team0_gk_colour)),
             GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team1_gk_colour)),
@@ -112,9 +125,11 @@ class GoalkeeperDetector:
         # Colour vector per player (None if crop is empty/unusable).
         player_vecs: list[np.ndarray | None] = []
         for p in detections.players:
-            crop = GSFATeamClassifier._torso_crop(frame, p.bbox)
+            crop = GSFATeamClassifier._torso_crop(frame, p.bbox, self.torso_ratio)
             if crop.shape[0] > 0 and crop.shape[1] > 0:
-                player_vecs.append(GSFATeamClassifier._mean_colour_vec([crop]))
+                player_vecs.append(
+                    GSFATeamClassifier._mean_colour_vec([crop], self.centre_crop_ratio)
+                )
             else:
                 player_vecs.append(None)
 

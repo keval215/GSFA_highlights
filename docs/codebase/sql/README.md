@@ -39,6 +39,16 @@ These explain *why* the tables look the way they do (see also `service/db.py`):
   guard (`is_expected`).
 - `matches.team0/1_name` + `team0/1_colour` — used for cluster→team-name resolution
   (`db.get_team_specs` returns them only if **all four** are present).
+- `matches.team0/1_gk_colour` — goalkeeper reference jersey colours, same hex/CSS-name
+  format as `team0/1_colour`. `db.get_gk_colours` returns them only if **both** are set;
+  `MatchSession.ensure_gk_ready()` polls this every clip until both exist, then
+  constructs `GoalkeeperDetector` (no fit step — see
+  [detectors/README.md](../detectors/README.md)). Mirrored on `post_processing` too.
+- `matches.ruleset` — `'futsal'` (default) or `'classic'`, selecting the `RulesetConfig`
+  (see [rulesets/README.md](../rulesets/README.md)) this match's pipeline is tuned with.
+  Set only on `INSERT` (first upload for a `match_id`) and never updated afterward — a
+  match's ruleset is fixed for its lifetime. `db.get_match_ruleset` reads it back; the
+  worker resolves it before creating or reusing a `MatchSession`.
 - `minute_stats.frames_team0/1/loose/oof` — possession denominator is `team0+team1`.
 - `minute_stats.clip_duration_seconds` — the client-supplied clip length from
   `POST /api/clips`, stored verbatim (no derivation). Nullable — rows written before this
@@ -57,6 +67,14 @@ These explain *why* the tables look the way they do (see also `service/db.py`):
 - No stored cumulative or percentage columns anywhere (computed on read by design).
 
 ## Migrations
-`schema.sql` includes an inline note for the v2 migration that added the
-`next_clip_seq_h1/h2` columns to an existing DB. Run it once before deploying the updated
-service against a pre-existing database.
+`schema.sql` includes inline `ALTER TABLE` notes for three migrations against an
+existing DB, each to be run once before deploying the corresponding service version:
+- **v2** — adds `next_clip_seq_h1`/`next_clip_seq_h2` to `matches`.
+- **v3** — adds `team0_gk_colour`/`team1_gk_colour` to both `matches` and
+  `post_processing`.
+- **v4** — adds `matches.ruleset NVARCHAR(16) NOT NULL DEFAULT 'futsal'`. The default
+  backfills existing rows so every match processed before this migration is treated as
+  futsal, matching its actual (pre-ruleset) processing. **Not yet applied to the live
+  Azure DB** as of this sync — a pending manual step, not something already deployed.
+  `post_processing` does **not** get a `ruleset` column (it is not currently threaded
+  through `write_post_processing_result`).

@@ -49,7 +49,8 @@
       "mcp__supermemory__recall",
       "mcp__supermemory__memory-graph",
       "Bash(ssh *)",
-      "PowerShell(gh run *)"
+      "PowerShell(gh run *)",
+      "Read(//c/Users/Admin/**)"
     ]
   }
 }

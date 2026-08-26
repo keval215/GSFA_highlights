@@ -1,12 +1,12 @@
 """
-team_classifier/test_team_classifier.py — Visual test for team classification
+modules/team_classifier/test_team_classifier.py — Visual test for team classification
 
 Usage:
     # SigLIP + UMAP + KMeans (default)
-    highlights\\Scripts\\python.exe team_classifier/test_team_classifier.py
+    highlights\\Scripts\\python.exe modules/team_classifier/test_team_classifier.py
 
     # Colour histogram + UMAP + KMeans
-    highlights\\Scripts\\python.exe team_classifier/test_team_classifier.py --colour
+    highlights\\Scripts\\python.exe modules/team_classifier/test_team_classifier.py --colour
 
 Output:
     data/debug/team_test/         → SigLIP results
@@ -24,11 +24,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from detectors.player_detector import PlayerDetector
-from team_classifier.team_classifier import GSFATeamClassifier
-from team_classifier.colour_histogram import ColourHistogramTeamClassifier
+from modules.detectors.player_detector import PlayerDetector
+from modules.team_classifier.team_classifier import GSFATeamClassifier
+from modules.team_classifier.colour_histogram import ColourHistogramTeamClassifier
 
 # ---------------------------------------------------------------------------
 # ARGS

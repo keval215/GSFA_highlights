@@ -4,16 +4,17 @@ Domain and codebase terms, in the sense this project uses them.
 
 | Term | Meaning |
 |---|---|
-| **Detection** | One detected object in one frame (`detectors/player_detector.py::Detection`). Carries bbox + the mutable fields later stages fill in (`team_id`, `is_goalkeeper`, `track_id`, `embedding`). |
+| **Detection** | One detected object in one frame (`modules/detectors/player_detector.py::Detection`). Carries bbox + the mutable fields later stages fill in (`team_id`, `is_goalkeeper`, `track_id`, `embedding`, `smoothed_bbox`). |
 | **FrameDetections** | All detections for a single frame, split into `players` / `referees` / `goal_posts` / `balls` / `all`. |
-| **foot_point** | Bottom-centre of a bbox `((x1+x2)//2, y2)`. Used for ground-plane reasoning (homography, foot-zone carrier test, GK-to-post distance). |
+| **foot_point** | Bottom-centre of a bbox `((x1+x2)//2, y2)`. Used for ground-plane reasoning (homography, foot-zone carrier test). |
 | **centre_point** | Geometric centre of a bbox. Used for the ball's tracked position. |
 | **team_id** | `0` or `1` — which team a player belongs to. `None` = unclassified (referees, posts, low-quality crops). Set by the team classifier; the cluster→team mapping is arbitrary-but-fixed per match. |
 | **embedding** | 768-D SigLIP feature vector for a player crop. Produced by the team classifier and reused by the tracker as appearance features (no separate ReID model). |
-| **track_id** | Stable per-player identity across frames, assigned by BoT-SORT (`tracking/player_tracker.py`). |
+| **track_id** | Stable per-player identity across frames, assigned by BoT-SORT (`modules/tracking/player_tracker.py`). |
 | **Team fit** | The one-time per-match step that learns the two team clusters (SigLIP→UMAP→KMeans). Cached to a pkl; reloaded on later runs/clips. |
-| **GK zone** | Average pixel location of the player nearest each goal post, learned at fit time. Used to identify the two goalkeepers per frame. |
-| **best_ball** | Adapter (`possession.py`) that picks the single highest-confidence ball from `FrameDetections.balls` and wraps it as a `BallDetection`. |
+| **GK colour match** | How `GoalkeeperDetector` identifies goalkeepers (replaced the old fit-based "GK zone" approach): the caller supplies two reference jersey colours; each frame, the single player whose crop colour is closest to a reference (within `max_gk_colour_dist`) is flagged `is_goalkeeper=True`. No fit step, no goal-post dependency, no tracking. |
+| **RulesetConfig** | A dataclass (`rulesets/base.py`) bundling every sport-tunable CV parameter (weights, conf thresholds, crop/blur tuning, GK colour distance, tracker thresholds, Kalman params, foot-zone sizing, pass-FSM timing). One instance per sport — `FUTSAL` (production default) and `CLASSIC` (11-a-side, not yet production-ready). Selected per match via the `ruleset` field/flag and fixed for that match's lifetime. |
+| **best_ball** | Adapter (`modules/possession/ball_tracker.py`) that picks the single highest-confidence ball from `FrameDetections.balls` and wraps it as a `BallDetection`. |
 | **Coasting** | When the ball isn't detected, `BallTracker` emits the Kalman-predicted position for up to `KALMAN_COAST_FRAMES` frames before declaring it `LOST`. |
 | **Carrier** | The player currently judged to "have" the ball — nearest player whose **foot zone** contains the ball centre. |
 | **Foot zone** | A radius around a player's `foot_point` (`FOOT_ZONE_RATIO × bbox_height`, clamped). Ball inside it ⇒ that player is a carrier candidate. |
@@ -35,4 +36,4 @@ Domain and codebase terms, in the sense this project uses them.
 | **Ordering guard** | Worker logic that only processes the next expected `(half, minute)`; out-of-order clips are deferred then processed-with-a-gap. |
 | **Poison queue** | Where messages that fail more than `MAX_DEQUEUE_COUNT` times are parked for manual inspection. |
 | **CMC** | Camera-motion compensation in BoT-SORT (`ecc` by default) — keeps track IDs stable across fast camera pans. |
-| **Homography (H)** | The 3×3 transform mapping image pixels ↔ top-down pitch metres. Used by `simple_homography.py` and `heatmap.py`, **not** by the possession pipeline. |
+| **Homography (H)** | The 3×3 transform mapping image pixels ↔ top-down pitch metres. Used by `simple_homography.py` (the now-deleted `heatmap.py` also used it), **not** by the possession pipeline. |

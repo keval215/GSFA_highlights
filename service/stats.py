@@ -18,7 +18,7 @@ LBL_TEAM1 = "team1"
 LBL_LOOSE = "loose"
 LBL_OOF   = "oof"
 
-# Pass-event kinds (must match video_analysis.possession.EVT_*)
+# Pass-event kinds (must match modules.possession.labels.EVT_*)
 EVT_COMPLETED    = "completed"
 EVT_INTERCEPTION = "interception"
 EVT_BALL_LOST    = "ball_lost"

@@ -20,58 +20,71 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
 from typing import Optional
 
 import cv2
 import joblib
 import numpy as np
 
-from detectors.goalkeeper_detector import GoalkeeperDetector
-from detectors.player_detector import PlayerDetector
-from team_classifier.team_classifier import GSFATeamClassifier, TeamSpec
-from tracking.player_tracker import PlayerTracker
-from video_analysis import possession as vp
-from video_analysis.possession import (
+from modules.detectors.goalkeeper_detector import GoalkeeperDetector
+from modules.detectors.player_detector import PlayerDetector
+from modules.team_classifier.team_classifier import GSFATeamClassifier, TeamSpec
+from modules.tracking.player_tracker import PlayerTracker
+from modules.possession import labels as vp_labels
+from modules.possession.pass_event_tracker import (
+    PHASE_CAND_REL,
+    PHASE_CAND_RCV,
+    PHASE_TRAVEL,
+)
+from modules.possession import (
     BallTracker,
     CarrierEngine,
     PassEventTracker,
 )
+from rulesets import RulesetConfig
 
 from service import config, db, stats
 
 log = logging.getLogger("gsfa.session")
 
 # The dependency-free constants in stats.py must mirror the pipeline's.
-assert stats.LBL_TEAM0 == vp.POSSESS_TEAM0
-assert stats.LBL_TEAM1 == vp.POSSESS_TEAM1
-assert stats.LBL_LOOSE == vp.POSSESS_LOOSE
-assert stats.LBL_OOF == vp.POSSESS_OOF
-assert stats.EVT_COMPLETED == vp.EVT_COMPLETED
-assert stats.EVT_INTERCEPTION == vp.EVT_INTERCEPTION
-assert stats.EVT_BALL_LOST == vp.EVT_BALL_LOST
+assert stats.LBL_TEAM0 == vp_labels.POSSESS_TEAM0
+assert stats.LBL_TEAM1 == vp_labels.POSSESS_TEAM1
+assert stats.LBL_LOOSE == vp_labels.POSSESS_LOOSE
+assert stats.LBL_OOF == vp_labels.POSSESS_OOF
+assert stats.EVT_COMPLETED == vp_labels.EVT_COMPLETED
+assert stats.EVT_INTERCEPTION == vp_labels.EVT_INTERCEPTION
+assert stats.EVT_BALL_LOST == vp_labels.EVT_BALL_LOST
 
-_TRAVEL_PHASES = (vp.PHASE_CAND_REL, vp.PHASE_TRAVEL, vp.PHASE_CAND_RCV)
+_TRAVEL_PHASES = (PHASE_CAND_REL, PHASE_TRAVEL, PHASE_CAND_RCV)
 
 
 # ---------------------------------------------------------------------------
-# Shared (process-wide) model bundle — loaded once, lives in VRAM
+# Shared (process-wide) model bundle — lives in VRAM
 # ---------------------------------------------------------------------------
 
-@dataclass
 class ModelBundle:
-    player_det: PlayerDetector  # unified YOLOv11m: players + ball + refs + posts
+    """One PlayerDetector per ruleset actually in use, loaded lazily on
+    first match of that ruleset (not all rulesets need VRAM if only one is
+    ever requested on a given deployment)."""
 
-    @staticmethod
-    def load() -> "ModelBundle":
-        log.info("Loading model (player=%s, device=%s)",
-                 config.player_weights(), config.DEVICE)
-        return ModelBundle(
-            player_det=PlayerDetector(
-                model_path=config.player_weights(),
+    def __init__(self) -> None:
+        self._player_dets: dict[str, PlayerDetector] = {}
+
+    def player_detector(self, ruleset: RulesetConfig) -> PlayerDetector:
+        det = self._player_dets.get(ruleset.name)
+        if det is None:
+            weights = config.player_weights(ruleset.name)
+            log.info("Loading player model for ruleset=%s (weights=%s, device=%s)",
+                     ruleset.name, weights, config.DEVICE)
+            det = PlayerDetector(
+                model_path=weights,
                 device=config.DEVICE,
-            ),
-        )
+                player_conf=ruleset.player_conf,
+                ball_conf=ruleset.ball_conf,
+            )
+            self._player_dets[ruleset.name] = det
+        return det
 
 
 # ---------------------------------------------------------------------------
@@ -79,10 +92,10 @@ class ModelBundle:
 # ---------------------------------------------------------------------------
 
 def collect_crops(clip_path: str, player_det: PlayerDetector,
-                  sample_every: int) -> list[np.ndarray]:
+                  sample_every: int, ruleset: RulesetConfig) -> list[np.ndarray]:
     """Torso crops from every Nth frame of a clip, sharp + big enough only.
-    Reuses GSFATeamClassifier's crop filters so the fit distribution matches
-    the batch pipeline."""
+    Reuses GSFATeamClassifier's crop filters (parametrized by the match's
+    ruleset) so the fit distribution matches the batch pipeline."""
     cap = cv2.VideoCapture(clip_path)
     if not cap.isOpened():
         raise IOError(f"collect_crops: cannot open {clip_path}")
@@ -95,9 +108,9 @@ def collect_crops(clip_path: str, player_det: PlayerDetector,
         if fidx % sample_every == 0:
             dets = player_det.detect(frame, frame_idx=fidx)
             for p in dets.players:
-                crop = GSFATeamClassifier._torso_crop(frame, p.bbox)
-                if (crop.shape[0] >= 32 and crop.shape[1] >= 32
-                        and GSFATeamClassifier._is_sharp(crop)):
+                crop = GSFATeamClassifier._torso_crop(frame, p.bbox, ruleset.torso_ratio)
+                if (crop.shape[0] >= ruleset.min_crop_px and crop.shape[1] >= ruleset.min_crop_px
+                        and GSFATeamClassifier._is_sharp(crop, ruleset.blur_threshold)):
                     crops.append(crop)
         fidx += 1
     cap.release()
@@ -135,9 +148,11 @@ class MatchSession:
     first clip it sees for a match_id; the team fit is loaded from disk if
     a pkl exists (worker restart / late clip after eviction)."""
 
-    def __init__(self, match_id: str, models: ModelBundle) -> None:
+    def __init__(self, match_id: str, models: ModelBundle, ruleset: RulesetConfig) -> None:
         self.match_id = match_id
         self.models   = models
+        self.ruleset  = ruleset
+        self.player_det = models.player_detector(ruleset)
 
         self.state_dir = config.MATCH_STATE_DIR / match_id
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -153,13 +168,36 @@ class MatchSession:
         # colours (known constants), so construction is cheap and retried
         # every clip via ensure_gk_ready() until the DB has both colours.
 
-        # Cross-clip CV state (Conflict 2). PlayerTracker frame rate uses the
-        # processed-frame rate because it only ever sees strided frames.
-        self.tracker      = PlayerTracker(fps=config.TARGET_PROCESS_FPS,
-                                          cmc_method=config.CMC_METHOD)
-        self.ball_tracker = BallTracker()
-        self.carrier_eng  = CarrierEngine()
-        self.pass_track   = PassEventTracker()
+        # Cross-clip CV state (Conflict 2), all parametrized by the match's
+        # ruleset. PlayerTracker frame rate uses the processed-frame rate
+        # because it only ever sees strided frames.
+        self.tracker      = PlayerTracker(
+            fps                           = config.TARGET_PROCESS_FPS,
+            cmc_method                    = config.CMC_METHOD,
+            track_high_thresh             = ruleset.track_high_thresh,
+            track_low_thresh              = ruleset.track_low_thresh,
+            new_track_thresh              = ruleset.new_track_thresh,
+            match_thresh                  = ruleset.match_thresh,
+            proximity_thresh              = ruleset.proximity_thresh,
+            appearance_thresh             = ruleset.appearance_thresh,
+            track_buffer_frames_at_30fps  = ruleset.track_buffer_frames_at_30fps,
+        )
+        self.ball_tracker = BallTracker(
+            coast_frames = ruleset.kalman_coast_frames,
+            gate_sigma   = ruleset.kalman_gate_sigma,
+        )
+        self.carrier_eng  = CarrierEngine(
+            hysteresis_n     = ruleset.carrier_hysteresis_n,
+            foot_zone_ratio  = ruleset.foot_zone_ratio,
+            foot_zone_min_px = ruleset.foot_zone_min_px,
+            foot_zone_max_px = ruleset.foot_zone_max_px,
+        )
+        self.pass_track   = PassEventTracker(
+            release_sustain  = ruleset.release_sustain,
+            reception_settle = ruleset.reception_settle,
+            travel_min_gap   = ruleset.travel_min_gap,
+            travel_timeout   = ruleset.travel_timeout_frames,
+        )
 
         self.proc_idx        = 0    # processed-frame counter, session-global
         self.n_events_seen   = 0    # how many pass_track.events already written
@@ -193,11 +231,17 @@ class MatchSession:
         if self.fit_status == "ok":
             return self.fit_status
 
-        crops = collect_crops(clip_path, self.models.player_det, config.FIT_SAMPLE_EVERY)
+        crops = collect_crops(clip_path, self.player_det, config.FIT_SAMPLE_EVERY, self.ruleset)
         if self.fit_status == "refit":
             crops = self._fit_crops_clip1 + crops
 
-        clf = GSFATeamClassifier(device=config.DEVICE)
+        clf = GSFATeamClassifier(
+            device            = config.DEVICE,
+            torso_ratio       = self.ruleset.torso_ratio,
+            blur_threshold    = self.ruleset.blur_threshold,
+            min_crop_px       = self.ruleset.min_crop_px,
+            centre_crop_ratio = self.ruleset.centre_crop_ratio,
+        )
         try:
             score = fit_and_score(clf, crops)
         except RuntimeError as exc:
@@ -278,7 +322,12 @@ class MatchSession:
 
         team0_gk_colour, team1_gk_colour = gk_colours
         try:
-            self.gk_det = GoalkeeperDetector(team0_gk_colour, team1_gk_colour)
+            self.gk_det = GoalkeeperDetector(
+                team0_gk_colour, team1_gk_colour,
+                max_colour_dist   = self.ruleset.max_gk_colour_dist,
+                torso_ratio       = self.ruleset.torso_ratio,
+                centre_crop_ratio = self.ruleset.centre_crop_ratio,
+            )
             log.info("[%s] GK classifier ready (colours=%s/%s)",
                      self.match_id, team0_gk_colour, team1_gk_colour)
         except ValueError as exc:
@@ -327,10 +376,13 @@ class MatchSessionManager:
         self.models = models
         self._sessions: dict[str, MatchSession] = {}
 
-    def get_or_create(self, match_id: str) -> MatchSession:
+    def get_or_create(self, match_id: str, ruleset: RulesetConfig) -> MatchSession:
+        """`ruleset` is only used when creating a new session — an existing
+        session keeps whatever ruleset it was created with (a match's
+        ruleset is fixed for its lifetime, see db.ensure_match)."""
         sess = self._sessions.get(match_id)
         if sess is None:
-            sess = MatchSession(match_id, self.models)
+            sess = MatchSession(match_id, self.models, ruleset)
             self._sessions[match_id] = sess
         sess.last_touched = time.monotonic()
         return sess

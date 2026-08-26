@@ -12,6 +12,7 @@ CREATE TABLE matches (
   team1_colour          NVARCHAR(32)  NULL,
   team0_gk_colour       NVARCHAR(32)  NULL,   -- goalkeeper jersey colour, same format
   team1_gk_colour       NVARCHAR(32)  NULL,
+  ruleset               NVARCHAR(16)  NOT NULL DEFAULT 'futsal',  -- 'futsal' | 'classic'; fixed at match creation, never changes
   last_half_processed   TINYINT       NOT NULL DEFAULT 1,
   last_minute_processed INT           NOT NULL DEFAULT 0,
   next_clip_seq_h1      INT           NOT NULL DEFAULT 0,  -- atomic per-half upload counters
@@ -26,6 +27,12 @@ CREATE TABLE matches (
 -- Migration v3 (run once against existing DB before deploying updated service):
 -- ALTER TABLE matches ADD team0_gk_colour NVARCHAR(32) NULL, team1_gk_colour NVARCHAR(32) NULL;
 -- ALTER TABLE post_processing ADD team0_gk_colour NVARCHAR(32) NULL, team1_gk_colour NVARCHAR(32) NULL;
+
+-- Migration v4 (run once against existing DB before deploying updated service):
+-- Adds futsal/classic ruleset selection (rulesets/ package). DEFAULT 'futsal'
+-- backfills existing rows so every match processed before this migration is
+-- treated as futsal, matching its actual (pre-ruleset) processing.
+-- ALTER TABLE matches ADD ruleset NVARCHAR(16) NOT NULL DEFAULT 'futsal';
 
 -- RAW counters only; one row per processed 60 s clip.
 -- Cumulative numbers are always computed on read (SUM over rows),

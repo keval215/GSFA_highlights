@@ -1,8 +1,9 @@
 # `service/`
 
-The production cloud service. It wraps the shared CV pipeline (from `detectors/`,
-`team_classifier/`, `tracking/`, `video_analysis/`) into a real-time, clip-by-clip system
-backed by Azure Blob + Queue + SQL, with an HTTP callback to the main app.
+The production cloud service. It wraps the shared CV pipeline (from `modules/detectors/`,
+`modules/team_classifier/`, `modules/tracking/`, `modules/possession/`), parametrized per
+match by a `RulesetConfig` (`rulesets/`), into a real-time, clip-by-clip system backed by
+Azure Blob + Queue + SQL, with an HTTP callback to the main app.
 
 **Two processes, one Docker image:**
 - **API** (`api.py`, no GPU) — ingests clips, enqueues work, serves health/metrics.
@@ -35,9 +36,19 @@ See also: [docs/API.md](../../API.md) (HTTP contract + env vars) and
 2. **Idempotency** — `db.minute_exists(...)` ⇒ drop message + delete blob (replay-safe).
 3. **Progress + ordering** — `db.get_match_progress`; `stats.is_expected(...)`. Out of
    order ⇒ `queue.defer(...)` up to `ORDERING_RETRIES`, then process-anyway with a gap log.
-4. **Session** — `manager.get_or_create(match_id)`; download blob to a job dir.
+   If the match row is somehow missing at this point (the API normally creates it), the
+   worker creates it itself defaulting to `ruleset="futsal"` and logs a loud warning — the
+   actual requested ruleset isn't carried in the clip queue message, so a genuinely
+   classic match hitting this path ends up silently (but loudly-logged) wrong.
+4. **Ruleset + session** — `ruleset = get_ruleset(db.get_match_ruleset(conn, match_id))`;
+   `manager.get_or_create(match_id, ruleset)`; download blob to a job dir. `ruleset` is
+   only used if a new session is created — an existing session keeps whatever ruleset it
+   was built with.
 5. **Team fit** — if `session.fit_status != "ok"`, `session.ensure_fit(clip_path)`.
-6. **Process** — `clip_processor.process_clip(session, clip_path, half, minute, blob_path)`.
+6. **Process** — `clip_processor.process_clip(session, clip_path, half, minute,
+   clip_duration_seconds, blob_path)` — internally calls `session.ensure_gk_ready()` first
+   (lazily builds `GoalkeeperDetector` once the DB has both GK reference colours; a no-op
+   once built) and runs `gk_det.classify(...)` per frame if ready.
 7. **Persist** — `db.write_clip_result(conn, minute_row, correction, events, team_names)`
    — a single transaction.
 8. **Callback** — `notifier.send_pending_for_match(conn, match_id)`.
@@ -52,65 +63,122 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - Centralises every env var. `_required(name)` raises a clear error at startup if a
   required var is missing (so failures aren't buried mid-request).
 - Required: `AZURE_STORAGE_CONNECTION_STRING`, `SQL_CONN_STR`, `PLAYER_WEIGHTS`.
+- `player_weights(ruleset_name)` (was a no-arg function): `"futsal"` still reads
+  `PLAYER_WEIGHTS` (backward compatible with existing deployments); any other ruleset
+  name reads `<RULESET>_PLAYER_WEIGHTS` (e.g. `CLASSIC_PLAYER_WEIGHTS`), required only
+  when that ruleset is actually used. `CLASSIC_PLAYER_WEIGHTS` is **not set on any
+  deployment yet** — selecting `ruleset=classic` today fails fast at model load.
 - Optional tunables with defaults: `TARGET_PROCESS_FPS` (15), `CMC_METHOD` (ecc),
-  `CLIP_BATCH_WINDOW` (16), `FIT_SAMPLE_EVERY` (5), `FIT_SILHOUETTE_MIN` (0.20),
-  queue/ordering/callback retry knobs, `SESSION_IDLE_EVICT_S`, paths, etc.
+  `CLIP_BATCH_WINDOW` (16), `FIT_SAMPLE_EVERY` (**30**, was 5), `FIT_SILHOUETTE_MIN`
+  (0.20), queue/ordering/callback retry knobs, `SESSION_IDLE_EVICT_S`, paths, etc.
+  `FIT_SAMPLE_EVERY` was raised from 5 to 30 in the "added fixes to stop the oom error"
+  commit (a separate, closely-following commit from the docker-compose memory limits in
+  [infra/README.md](../infra/README.md)) to bound torso-crop volume for whole-match
+  `/post-processing` uploads — `collect_crops` there samples the entire match file, not
+  just a ~60 s clip, so a small stride generates far more crops than fitting needs —
+  while still sampling frames spread across the full file.
 - **Does NOT** hardcode secrets; everything comes from `/etc/gsfa-highlights.env` on the
   VM (loaded by docker-compose `env_file`). `PLAYER_WEIGHTS` must be the **bare path** to
   the weights — a value like `PLAYER_WEIGHTS=/path/...` (name duplicated) is the classic
   misconfig that crashes the worker at model load.
 
 ## `api.py` (FastAPI, no GPU)
-- `POST /api/clips` (multipart): hygiene checks (content type, size cap), `db.ensure_match`
-  (first clip creates the match; later clips fill missing team metadata via COALESCE),
-  resolve/claim the minute (`db.claim_next_minute` if not supplied), dedupe
-  (`minute_exists` or blob already exists ⇒ `202 duplicate`), else `blob.upload_stream` +
-  `queue.enqueue` ⇒ `202`.
-- `POST /post-processing` (multipart): accepts a whole-match video, stores it at
+- `POST /api/clips` (multipart): hygiene checks (content type, size cap), validates
+  `ruleset` against the `rulesets` registry (`422` on unknown), `db.ensure_match`
+  (first clip creates the match — with its `ruleset`, fixed for the match's lifetime —
+  and stores `team0_colour`/`team1_colour`/`team0_gk_colour`/`team1_gk_colour`, now all
+  **required** fields; later clips fill missing team-name metadata via COALESCE and
+  ignore any `ruleset` value they send), resolve/claim the minute (`db.claim_next_minute`
+  if not supplied), dedupe (`minute_exists` or blob already exists ⇒ `202 duplicate`),
+  else `blob.upload_stream` + `queue.enqueue` ⇒ `202`.
+- `POST /post-processing` (multipart): same `ruleset` validation + required colour
+  fields as above; accepts a whole-match video, stores it at
   `clips/<match_id>/post_processing.mp4`, enqueues a background job, and returns `200`
   once the upload is fully received. The worker deletes the blob after processing.
 - `GET /health` — 200 if the worker heartbeat is < 300 s old, else 503.
-- `GET /metrics` — queue depths, last-clip seconds, seconds-behind-live, GPU mem, etc.
+- `GET /metrics` — queue depths, last-clip seconds, seconds-behind-live, GPU mem,
+  `last_post_processing_error` (the most recent whole-match job's failure, if any — not
+  retried automatically, see `worker.py` below), etc.
 - **Does NOT** process clips inline, touch the GPU, or render — it returns in ~1–2 s.
 - An access-log filter drops 404 spam from internet scanners.
 
 ## `worker.py` (GPU)
-- `Worker.__init__` loads everything once: queue, blob, `ModelBundle.load()` (the unified
-  detector in VRAM), `MatchSessionManager`, a SQL connection.
+- `Worker.__init__` sets up queue, blob, `ModelBundle()` (empty — no longer loads a model
+  eagerly at startup; see `session.py` below), `MatchSessionManager`, a SQL connection.
 - `run_forever()` polls every ~2 s; on any loop exception it logs, **reconnects SQL**, and
   continues (resilient to transient DB drops).
 - Writes a heartbeat each loop (GPU visibility/mem, last clip seconds, queue depth →
-  seconds-behind-live, active matches).
+  seconds-behind-live, active matches, `last_post_processing_error`).
 - **Does NOT** parallelise across clips — one clip at a time (simple, ~1 concurrent match
   expected). **Does NOT** render video.
-- Routes `kind = post_processing` queue messages through the whole-match path and writes
-  the new `post_processing` SQL table.
+- Routes `kind = post_processing` queue messages through a separate whole-match path
+  (`_handle_post_processing`) and writes the `post_processing` SQL table:
+  - The queue message is **deleted before processing starts** — no lease renewal, no
+    automatic retry. A job that dies partway through (in-process exception, container
+    OOM-kill, VM shutdown) must never be silently redelivered and reprocessed on top of
+    leftover state; recovery is a **manual re-upload**.
+  - The `MatchSession` is constructed **directly** (`MatchSession(match_id, self.models,
+    ruleset)`), never through `MatchSessionManager` and never stored/reused — every
+    attempt starts from clean tracker/ball/carrier/pass-FSM state, isolated from the
+    live-clip path for the same match.
+  - `db.ensure_match(...)` is called first (it only sets `ruleset` on the row's initial
+    `INSERT`, so a match created by a prior `/api/clips` upload keeps that ruleset), then
+    `ruleset = get_ruleset(db.get_match_ruleset(conn, match_id))` reads it back.
+  - The blob download, `process_match_video(...)` call, and `db.write_post_processing_result`
+    write are wrapped in a `try/except`: on failure the exception is logged and recorded
+    in-memory as `self._last_post_processing_error` (surfaced via `GET /metrics`), and a
+    `finally` block still deletes the blob and job dir — but the queue message is already
+    gone, so **no retry happens**.
 
 ## `session.py`
-- **`ModelBundle`** — process-wide models loaded once (currently just the unified
-  `PlayerDetector`). The team classifier is per-match, not here.
-- **`MatchSession`** — all cross-clip state for one match: `tracker`, `ball_tracker`,
-  `carrier_eng`, `pass_track`, `proc_idx`, `team_clf`, `fit_status`, the carryover for a
-  pass spanning a clip boundary, and `last_written`. On construction it reloads the team
-  fit pkl from `MATCH_STATE_DIR/<match_id>/team_siglip.pkl` if present (survives restarts).
+- **`ModelBundle`** — was a `@dataclass` eagerly loading one global `PlayerDetector` at
+  worker startup (`ModelBundle.load()`); now a plain class holding
+  `dict[ruleset_name, PlayerDetector]`, populated **lazily**: `player_detector(ruleset)`
+  loads and caches a `PlayerDetector` for that ruleset's weights/conf on first use, so a
+  deployment that only ever serves one ruleset never loads VRAM for the other. The team
+  classifier is per-match, not here.
+- **`MatchSession`** — `__init__(match_id, models, ruleset: RulesetConfig)` (gained the
+  `ruleset` param). All cross-clip state for one match: `tracker`, `ball_tracker`,
+  `carrier_eng`, `pass_track`, `proc_idx`, `team_clf`, `fit_status`, `gk_det` (see below),
+  the carryover for a pass spanning a clip boundary, and `last_written`. `self.player_det
+  = models.player_detector(ruleset)` resolves this match's detector. Every CV class
+  (`PlayerTracker`, `BallTracker`, `CarrierEngine`, `PassEventTracker`,
+  `GSFATeamClassifier`) is now constructed **from `ruleset`'s fields** rather than
+  hardcoded defaults (values are unchanged for `futsal`). On construction it reloads the
+  team fit pkl from `MATCH_STATE_DIR/<match_id>/team_siglip.pkl` if present (survives
+  restarts).
   - `ensure_fit(clip)` — clip-1 dense fit with a **silhouette quality guard**
     (`fit_and_score`): below `FIT_SILHOUETTE_MIN` ⇒ keep clip-1 crops and **refit on clip
     2** with combined samples; never refit after committing (re-running KMeans could swap
     the 0/1 labels mid-match). Commits the pkl + resolves team names.
+  - `ensure_gk_ready()` — constructs `self.gk_det` (`GoalkeeperDetector`) once
+    `db.get_gk_colours(match_id)` returns both reference colours; no-op if already
+    constructed or if construction previously failed (`ValueError` on an unparseable
+    colour, cached as `_gk_colour_invalid` so it isn't retried every clip). Never raises —
+    GK classification is an overlay on top of the core possession stats, called at the
+    top of every `clip_processor.process_clip(...)`.
   - `split_adjustment(n)` / `finish_clip(half, minute)` / `new_events()` — the boundary
     bookkeeping used by `clip_processor`.
-- **`MatchSessionManager`** — `dict[match_id → MatchSession]` with idle eviction.
-- Uses the team classifier's **static** crop helpers (`_torso_crop`, `_is_sharp`) in its
-  own `collect_crops`; it does **NOT** call `GSFATeamClassifier.fit_from_video`.
+- **`MatchSessionManager.get_or_create(match_id, ruleset)`** (gained the `ruleset` param)
+  — `dict[match_id → MatchSession]` with idle eviction. `ruleset` is only used when
+  creating a new session; an existing session keeps whatever ruleset it was created with
+  (a match's ruleset is fixed for its lifetime, enforced by `db.ensure_match` only setting
+  it on `INSERT`).
+- `collect_crops(clip_path, player_det, sample_every, ruleset)` (gained the `ruleset`
+  param) uses the team classifier's **static** crop helpers (`_torso_crop`, `_is_sharp`),
+  now parametrized by `ruleset.torso_ratio`/`min_crop_px`/`blur_threshold`; it does
+  **NOT** call `GSFATeamClassifier.fit_from_video`.
 - **Asserts at import** that `stats.py`'s label/event strings equal
-  `video_analysis.possession`'s — the cross-module contract guard.
+  `modules.possession.labels`'s — the cross-module contract guard.
 
 ## `clip_processor.py`
 - `process_clip(session, clip_path, half, minute, clip_duration_seconds, clip_blob_path=None)`
-  decodes the clip, strides to `TARGET_PROCESS_FPS`, and processes in
-  windows of `CLIP_BATCH_WINDOW` frames:
+  first calls `session.ensure_gk_ready()` (see `session.py` above), then decodes the
+  clip, strides to `TARGET_PROCESS_FPS`, and processes in windows of `CLIP_BATCH_WINDOW`
+  frames:
   - **Pass 1 (batched, stateless GPU):** `player_det.detect_batch` + `team_clf.classify_batch`
-    + `best_ball` per frame.
+    + (if `session.gk_det` is ready) `gk_det.classify(frame, dets)` per frame + `best_ball`
+    per frame.
   - **Pass 2 (strictly sequential, stateful):** `tracker.update` → `ball_tracker.update`
     → `carrier_eng.update` → `pass_track.update`; bucket the label into `MinuteCounters`
     and apply adjustments. **Semantically identical** to the old per-frame loop — only the
@@ -150,15 +218,21 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   upsert this minute row (PK = `(match_id, half, minute)` ⇒ replay overwrites, now also
   storing `clip_duration_seconds`) → insert events → advance match progress → insert the
   **outbox** row with a fresh cumulative payload. Rolls back on any error.
-- Match upsert (`ensure_match`, COALESCE so later clips can't overwrite), atomic minute
-  claim (`claim_next_minute` via `UPDATE...OUTPUT`), `minute_exists`, `get_match_progress`,
-  `get_team_specs` (only if both teams have name **and** colour). Outbox ops
-  (`fetch_pending`, `mark_sent`, `mark_failed`) for the notifier.
+- Match upsert (`ensure_match` — now also takes `team0/1_gk_colour` and `ruleset`;
+  `ruleset` is written only on the `INSERT` branch, never the `UPDATE` branch, so it's
+  fixed at match creation; COALESCE so later clips can't overwrite name/colour fields),
+  atomic minute claim (`claim_next_minute` via `UPDATE...OUTPUT`), `minute_exists`,
+  `get_match_progress`, `get_match_ruleset` (returns `"futsal"` if the row is somehow
+  missing — should not happen, callers `ensure_match()` first), `get_team_specs` (only if
+  both teams have name **and** colour), `get_gk_colours` (only if **both** GK colours are
+  set — independent of team names). Outbox ops (`fetch_pending`, `mark_sent`,
+  `mark_failed`) for the notifier.
 - `post_processing_exists(conn, match_id)` / `write_post_processing_result(...)` — dedupe
-  check and upsert for the new whole-match `post_processing` table, keyed by `match_id`;
-  stores the team metadata snapshot alongside the raw counters. Unlike `write_clip_result`,
-  this does **not** touch `callback_outbox` — no advance-stats callback is sent for
-  whole-match uploads.
+  check and upsert for the whole-match `post_processing` table, keyed by `match_id`;
+  stores the team metadata snapshot (including `team0/1_gk_colour`) alongside the raw
+  counters. Does **not** currently take/store a `ruleset` value. Unlike
+  `write_clip_result`, this does **not** touch `callback_outbox` — no advance-stats
+  callback is sent for whole-match uploads.
 
 ## `blob.py` / `queueing.py` (Azure adapters)
 - `blob.py` — `ClipBlobStore`: container ensure/exists/upload/download/delete. Blob layout

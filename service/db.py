@@ -27,8 +27,8 @@ from service.stats import EventRow, MinuteRow, PriorCorrection, build_payload
 __all__ = [
     "EventRow", "MinuteRow", "PriorCorrection", "OutboxRow", "build_payload",
     "get_conn", "ensure_match", "get_team_specs", "get_gk_colours", "get_match_progress",
-    "claim_next_minute", "minute_exists", "cumulative_read", "write_clip_result",
-    "post_processing_exists", "write_post_processing_result",
+    "get_match_ruleset", "claim_next_minute", "minute_exists", "cumulative_read",
+    "write_clip_result", "post_processing_exists", "write_post_processing_result",
     "fetch_pending", "mark_sent", "mark_failed",
 ]
 
@@ -55,19 +55,22 @@ def ensure_match(
     team1_colour: Optional[str] = None,
     team0_gk_colour: Optional[str] = None,
     team1_gk_colour: Optional[str] = None,
+    ruleset: str = "futsal",
 ) -> None:
     """First clip auto-creates the match; later calls only fill in missing
-    metadata. Commits."""
+    metadata. `ruleset` is only used on creation — it is fixed for the life
+    of the match (team fit, tracker, and pass-FSM state all assume one
+    ruleset), so later calls never change it. Commits."""
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM matches WHERE match_id = ?", match_id)
     if cur.fetchone() is None:
         cur.execute(
             "INSERT INTO matches "
             "  (match_id, team0_name, team1_name, team0_colour, team1_colour, "
-            "   team0_gk_colour, team1_gk_colour) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "   team0_gk_colour, team1_gk_colour, ruleset) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             match_id, team0_name, team1_name, team0_colour, team1_colour,
-            team0_gk_colour, team1_gk_colour,
+            team0_gk_colour, team1_gk_colour, ruleset,
         )
     else:
         cur.execute(
@@ -131,6 +134,16 @@ def get_match_progress(conn: pyodbc.Connection, match_id: str) -> Optional[tuple
     )
     row = cur.fetchone()
     return (int(row[0]), int(row[1])) if row else None
+
+
+def get_match_ruleset(conn: pyodbc.Connection, match_id: str) -> str:
+    """The ruleset ('futsal' | 'classic') this match was created with.
+    Defaults to 'futsal' if the match row is somehow missing (should not
+    happen — callers ensure_match() before reaching this point)."""
+    cur = conn.cursor()
+    cur.execute("SELECT ruleset FROM matches WHERE match_id = ?", match_id)
+    row = cur.fetchone()
+    return str(row[0]) if row and row[0] else "futsal"
 
 
 def claim_next_minute(conn: pyodbc.Connection, match_id: str, half: int) -> int:

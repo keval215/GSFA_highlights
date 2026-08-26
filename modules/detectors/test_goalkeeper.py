@@ -1,9 +1,9 @@
 """
-detectors/test_goalkeeper.py — Visual test for goalkeeper colour classification
+modules/detectors/test_goalkeeper.py — Visual test for goalkeeper colour classification
 
 Run:
     cd D:\\GSFA_highlights
-    highlights\\Scripts\\python.exe detectors/test_goalkeeper.py
+    highlights\\Scripts\\python.exe modules/detectors/test_goalkeeper.py
 
 Output:
     data/debug/gk_test/frame_XXXXX.jpg   — 10 annotated frames
@@ -17,11 +17,11 @@ from pathlib import Path
 
 import cv2
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from detectors.player_detector import PlayerDetector
-from detectors.goalkeeper_detector import GoalkeeperDetector
-from team_classifier.colour_histogram import ColourHistogramTeamClassifier
+from modules.detectors.player_detector import PlayerDetector
+from modules.detectors.goalkeeper_detector import GoalkeeperDetector
+from modules.team_classifier.colour_histogram import ColourHistogramTeamClassifier
 
 # ---------------------------------------------------------------------------
 # CONFIG

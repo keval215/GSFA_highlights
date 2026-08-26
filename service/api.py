@@ -4,7 +4,7 @@ service/api.py — FastAPI ingestion endpoint (no GPU).
 POST /api/clips  multipart/form-data:
     file (60 s mp4), match_id, team0_colour, team1_colour, team0_gk_colour,
     team1_gk_colour
-        [+ clip_duration_seconds, half, minute, team0_name, team1_name]
+        [+ clip_duration_seconds, half, minute, team0_name, team1_name, ruleset]
   → upload blob clips/<match_id>/<half>_<minute>.mp4
     → enqueue {"match_id","half","minute","blob_path","clip_duration_seconds"}
   → 202 in ~1–2 s. Processing is never inline.
@@ -12,7 +12,7 @@ POST /api/clips  multipart/form-data:
 POST /post-processing  multipart/form-data:
     file (whole-match mp4), match_id, team0_colour, team1_colour,
     team0_gk_colour, team1_gk_colour
-        [+ team0_name, team1_name]
+        [+ team0_name, team1_name, ruleset]
     → upload blob clips/<match_id>/post_processing.mp4
         → enqueue {"kind":"post_processing", ...}
     → 200 once the upload is fully received and queued.
@@ -21,6 +21,12 @@ All four colour fields are required on every request (not just the first
 clip) — team0_colour/team1_colour drive outfield cluster→team resolution,
 team0_gk_colour/team1_gk_colour drive goalkeeper colour-matching. team_name
 fields remain optional.
+
+ruleset ("futsal" | "classic", default "futsal") selects which sport's CV
+tuning (rulesets/ package) processes this match — foot-zone size, tracker
+thresholds, pass timing, model weights, etc. Only used on the FIRST request
+for a match_id (it creates the matches row); later requests for the same
+match_id ignore it — a match's ruleset is fixed for its lifetime.
 
 half and minute are optional (default 0). Duplicate (match_id, half, minute)
 ⇒ 202 with "duplicate": true, clip skipped.
@@ -42,6 +48,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from rulesets import DEFAULT_RULESET, available_rulesets, get_ruleset
 from service import config, db, logging_setup
 from service.blob import ClipBlobStore, blob_name, post_processing_blob_name
 from service.queueing import ClipQueue
@@ -113,6 +120,7 @@ async def post_clip(
     team1_colour: str = Form(...),
     team0_gk_colour: str = Form(...),
     team1_gk_colour: str = Form(...),
+    ruleset: str = Form(DEFAULT_RULESET),   # "futsal" | "classic"
 ):
     # Basic hygiene only (no auth in v1 — NSG restricts port 8000).
     if file.content_type not in ("video/mp4", "application/octet-stream", None):
@@ -125,13 +133,19 @@ async def post_clip(
         raise HTTPException(422, f"half must be >= 1, got {half}")
     if minute is not None and minute < 1:
         raise HTTPException(422, f"minute must be >= 1, got {minute}")
+    try:
+        get_ruleset(ruleset)
+    except ValueError:
+        raise HTTPException(422, f"unknown ruleset {ruleset!r} — valid: {available_rulesets()}")
 
-    # First clip auto-creates the match; later clips fill missing metadata.
+    # First clip auto-creates the match (with its ruleset, fixed for the
+    # match's lifetime); later clips fill missing metadata only.
     conn = db.get_conn()
     try:
         db.ensure_match(conn, match_id, team0_name, team1_name,
                         team0_colour, team1_colour,
-                        team0_gk_colour, team1_gk_colour)
+                        team0_gk_colour, team1_gk_colour,
+                        ruleset=ruleset)
         resolved_half   = half   if half   is not None else 1
         resolved_minute = minute if minute is not None else db.claim_next_minute(conn, match_id, resolved_half)
         already_processed = db.minute_exists(conn, match_id, resolved_half, resolved_minute)
@@ -162,17 +176,23 @@ async def post_processing(
     team1_colour: str = Form(...),
     team0_gk_colour: str = Form(...),
     team1_gk_colour: str = Form(...),
+    ruleset: str = Form(DEFAULT_RULESET),   # "futsal" | "classic"
 ):
     if file.content_type not in ("video/mp4", "application/octet-stream", None):
         raise HTTPException(415, f"unsupported content type: {file.content_type}")
     if file.size is not None and file.size > config.MAX_UPLOAD_GB * 1024**3:
         raise HTTPException(413, f"video exceeds {config.MAX_UPLOAD_GB} GB cap")
+    try:
+        get_ruleset(ruleset)
+    except ValueError:
+        raise HTTPException(422, f"unknown ruleset {ruleset!r} — valid: {available_rulesets()}")
 
     conn = db.get_conn()
     try:
         db.ensure_match(conn, match_id, team0_name, team1_name,
                         team0_colour, team1_colour,
-                        team0_gk_colour, team1_gk_colour)
+                        team0_gk_colour, team1_gk_colour,
+                        ruleset=ruleset)
         already_processed = db.post_processing_exists(conn, match_id)
     finally:
         conn.close()

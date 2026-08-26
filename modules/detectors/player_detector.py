@@ -1,5 +1,5 @@
 """
-detectors/player_detector.py — GSFA Detection Module
+modules/detectors/player_detector.py — GSFA Detection Module
 
 Wraps the unified YOLOv11m model (trained at imgsz 960, 4 classes):
     0 → active_players (mapped internally to "active_player")
@@ -8,11 +8,11 @@ Wraps the unified YOLOv11m model (trained at imgsz 960, 4 classes):
     3 → referee
 
 The ball class is now produced by this same model; there is no separate
-RF-DETR ball detector. Use video_analysis.possession.best_ball(frame_dets)
+RF-DETR ball detector. Use modules.possession.best_ball(frame_dets)
 to pick the single best ball from a frame's detections.
 
 Import:
-    from detectors.player_detector import PlayerDetector
+    from modules.detectors.player_detector import PlayerDetector
 
 Quick start:
     detector = PlayerDetector()

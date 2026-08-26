@@ -59,9 +59,16 @@ POISON_QUEUE_NAME = os.environ.get("POISON_QUEUE_NAME", "clips-poison")
 
 # --- Model weights (VM disk paths) ----------------------------------------
 
-def player_weights() -> str:
-    # Unified YOLOv11m weights: players + ball + refs + posts.
-    return _required("PLAYER_WEIGHTS")
+def player_weights(ruleset_name: str) -> str:
+    """Unified YOLOv11m weights path for one ruleset: players + ball + refs +
+    posts. 'futsal' keeps today's PLAYER_WEIGHTS env var name (backward
+    compatible with existing deployments); other rulesets use
+    <RULESET>_PLAYER_WEIGHTS, required only when that ruleset is actually
+    used (a deployment that never serves classic matches doesn't need
+    CLASSIC_PLAYER_WEIGHTS set)."""
+    if ruleset_name == "futsal":
+        return _required("PLAYER_WEIGHTS")
+    return _required(f"{ruleset_name.upper()}_PLAYER_WEIGHTS")
 
 
 # --- Local state directories ------------------------------------------------

@@ -27,6 +27,7 @@ import shutil
 import time
 import warnings
 
+from rulesets import get_ruleset
 from service import config, db, logging_setup, notifier
 from service.blob import ClipBlobStore
 from service.clip_processor import process_clip
@@ -47,7 +48,10 @@ class Worker:
         self.queue   = ClipQueue()
         self.queue.ensure_queues()
         self.blob    = ClipBlobStore()
-        self.models  = ModelBundle.load()
+        # Player models are loaded lazily per ruleset on first match of that
+        # ruleset (see ModelBundle.player_detector) — not all rulesets need
+        # VRAM up front if only one is ever requested on this deployment.
+        self.models  = ModelBundle()
         self.manager = MatchSessionManager(self.models)
         self.conn    = db.get_conn()
         self._last_clip_seconds: float | None = None
@@ -98,7 +102,16 @@ class Worker:
 
         progress = db.get_match_progress(self.conn, msg.match_id)
         if progress is None:
-            # api normally creates the match row; cover the gap anyway.
+            # api normally creates the match row; cover the gap anyway. The
+            # actual requested ruleset isn't available on this path (it's
+            # not carried in the clip queue message), so this defaults to
+            # futsal — log loudly since a silently-wrong ruleset assignment
+            # would otherwise just look like slightly-off stats later.
+            log.warning("clip %s h%d m%d arrived with no matches row yet — "
+                        "creating one with ruleset=futsal (default); if this "
+                        "match was meant to be classic, its ruleset is now "
+                        "wrong and cannot be changed after creation",
+                        msg.match_id, msg.half, msg.minute)
             db.ensure_match(self.conn, msg.match_id)
             progress = (1, 0)
         last_half, last_minute = progress
@@ -116,7 +129,8 @@ class Worker:
                       "processing anyway (GAP after h%d m%d)", msg.match_id, msg.half,
                       msg.minute, config.ORDERING_RETRIES, last_half, last_minute)
 
-        session  = self.manager.get_or_create(msg.match_id)
+        ruleset  = get_ruleset(db.get_match_ruleset(self.conn, msg.match_id))
+        session  = self.manager.get_or_create(msg.match_id, ruleset)
         job_dir  = config.JOBS_DIR / msg.match_id
         clip_path = job_dir / f"{msg.half}_{msg.minute}.mp4"
         self.blob.download_to(msg.blob_path, clip_path)
@@ -166,12 +180,16 @@ class Worker:
                         msg.team0_name, msg.team1_name,
                         msg.team0_colour, msg.team1_colour,
                         msg.team0_gk_colour, msg.team1_gk_colour)
+        # ensure_match() above only sets ruleset on first INSERT — the row
+        # already exists (created by the /post-processing upload) with
+        # whichever ruleset that request specified, so this reads it back.
+        ruleset = get_ruleset(db.get_match_ruleset(self.conn, msg.match_id))
 
         # Own session, constructed directly (never through MatchSessionManager,
         # never stored there) — isolated from the live-clip path for this match
         # and never reused across attempts, so every run starts from clean
         # tracker/ball/carrier/pass-FSM state.
-        session = MatchSession(msg.match_id, self.models)
+        session = MatchSession(msg.match_id, self.models, ruleset)
         job_dir = config.JOBS_DIR / msg.match_id
         video_path = job_dir / "post_processing.mp4"
 

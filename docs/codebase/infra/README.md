@@ -33,11 +33,18 @@ How the service is packaged, deployed, configured, and tested.
 
 ## `docker-compose.yml`
 - `api` — `uvicorn service.api:app` on port 8000, no GPU, mounts `/mnt/data`.
+  `mem_limit: 3g`, `mem_reservation: 1g`.
 - `worker` — `python -m service.worker`, `gpus: all`, mounts `/mnt/data` and the
   read-only models dir `/opt/gsfa-highlights/models`. Sets `HF_HOME=/mnt/data/hf_cache`
   so SigLIP weights/`spiece.model` survive container rebuilds (the team-fit pkl references
   these files by path; an ephemeral cache would break the pkl after every rebuild).
+  `mem_limit: 21g`, `mem_reservation: 6g`.
 - Both load secrets/config from **`env_file: /etc/gsfa-highlights.env`** on the VM.
+- **Memory limits (added 2026-07-07):** both containers are capped so a runaway process
+  in either one gets OOM-killed by Docker instead of the VM-wide OOM killer freezing the
+  whole host (the incident that prompted this — worker or api memory growth previously
+  had no ceiling). `mem_reservation` is a soft target used for scheduling, not enforced;
+  `mem_limit` is the hard cap.
 
 > **Config gotcha:** every variable in `/etc/gsfa-highlights.env` must be `NAME=value`,
 > with the value being the bare value. Writing `PLAYER_WEIGHTS=PLAYER_WEIGHTS=/path/...`

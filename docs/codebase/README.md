@@ -27,22 +27,26 @@ Start here, then follow the reading order:
 
 ```
 GSFA_highlights/
-├── detectors/            Object detection + per-frame parsing (YOLOv11m), GK logic, cache
-├── team_classifier/      Assign each player to team 0/1 (SigLIP and colour-histogram variants)
-├── tracking/             BoT-SORT multi-object tracker (stable per-player track IDs)
-├── video_analysis/       The possession/pass pipeline + homography/keypoint tooling
-├── service/              The production cloud service (FastAPI ingest + GPU worker + Azure + SQL)
-├── sql/                  Azure SQL schema (matches, minute_stats, post_processing, events, callback_outbox)
-├── scripts/              Standalone tools (CSV export, clip upload, team-diagnostics)
-├── data/                 (gitignored) cache pkls + output videos/PNGs
-├── docs/                 Documentation (this tree + API.md + azure_deploy.md)
-├── heatmap.py            Standalone: player position heatmaps via homography
-├── shots_on_t.py         Standalone: shots-on-target detector (Colab/experimental)
-├── Dockerfile            Single image for both api + worker
-├── docker-compose.yml    Runs api (CPU) + worker (GPU) from that image
-├── requirements.txt      Local dev deps   |  requirements-service.txt  Service deps
-└── .github/workflows/    CI: push to `main` → SSH redeploy on the Azure VM
+├── modules/               The shared CV pipeline package
+│   ├── detectors/         Object detection + per-frame parsing (YOLOv11m), GK logic, cache
+│   ├── team_classifier/   Assign each player to team 0/1 (SigLIP and colour-histogram variants)
+│   ├── tracking/          BoT-SORT multi-object tracker (stable per-player track IDs)
+│   └── possession/        Ball tracking, carrier engine, pass FSM, possession stats
+├── rulesets/              Per-sport RulesetConfig profiles (futsal / classic) selecting all of the above
+├── video_analysis/        run.py (local dev CLI) + homography/keypoint tooling
+├── service/               The production cloud service (FastAPI ingest + GPU worker + Azure + SQL)
+├── sql/                   Azure SQL schema (matches, minute_stats, post_processing, events, callback_outbox)
+├── scripts/               Standalone tools (CSV export, clip upload, team-diagnostics, tracker research)
+├── data/                  (gitignored) cache pkls + output videos/PNGs
+├── docs/                  Documentation (this tree + API.md + azure_deploy.md)
+├── Dockerfile             Single image for both api + worker
+├── docker-compose.yml     Runs api (CPU) + worker (GPU) from that image
+├── requirements.txt       Local dev deps   |  requirements-service.txt  Service deps
+└── .github/workflows/     CI: push to `main` → SSH redeploy on the Azure VM
 ```
+
+`heatmap.py` and `shots_on_t.py` (former root-level standalone tools) have been deleted
+from the repo — see [scripts/README.md](scripts/README.md).
 
 ---
 
@@ -50,13 +54,14 @@ GSFA_highlights/
 
 | Package | Doc | What lives there |
 |---|---|---|
-| `detectors/` | [detectors/README.md](detectors/README.md) | YOLOv11m detection, `Detection`/`FrameDetections` types, goalkeeper detection, cache paths |
-| `team_classifier/` | [team_classifier/README.md](team_classifier/README.md) | SigLIP team classifier (production) + colour-histogram variant |
-| `tracking/` | [tracking/README.md](tracking/README.md) | BoT-SORT wrapper that consumes external SigLIP embeddings |
-| `video_analysis/` | [video_analysis/README.md](video_analysis/README.md) | `possession.py` (the core CV→stats pipeline) + homography tools |
+| `modules/detectors/` | [detectors/README.md](detectors/README.md) | YOLOv11m detection, `Detection`/`FrameDetections` types, goalkeeper detection, cache paths |
+| `modules/team_classifier/` | [team_classifier/README.md](team_classifier/README.md) | SigLIP team classifier (production) + colour-histogram variant |
+| `modules/tracking/` | [tracking/README.md](tracking/README.md) | BoT-SORT wrapper that consumes external SigLIP embeddings |
+| `modules/possession/` + `video_analysis/` | [video_analysis/README.md](video_analysis/README.md) | Ball tracking → carrier → pass FSM → possession stats (`modules/possession/`), + `run.py` (local CLI) and homography tools |
+| `rulesets/` | [rulesets/README.md](rulesets/README.md) | Per-sport `RulesetConfig` profiles (futsal production default, classic placeholder) |
 | `service/` | [service/README.md](service/README.md) | The production service: ingest API, GPU worker, sessions, stats, DB, Azure adapters |
 | `sql/` | [sql/README.md](sql/README.md) | Database schema + why cumulative numbers are computed on read |
-| scripts / standalone | [scripts/README.md](scripts/README.md) | `heatmap.py`, `shots_on_t.py`, `scripts/*` (CSV export, clip upload) |
+| scripts / standalone | [scripts/README.md](scripts/README.md) | `scripts/*` (CSV export, clip upload, tracker research) |
 | infra | [infra/README.md](infra/README.md) | Dockerfile, compose, CI/CD, requirements, environment |
 
 ---
@@ -67,7 +72,7 @@ The same CV pipeline classes are used in two very different entry points:
 
 | | **Local script mode** | **Production service mode** |
 |---|---|---|
-| Entry point | `python video_analysis/possession.py` | `service/api.py` (ingest) + `service/worker.py` (GPU) |
+| Entry point | `python video_analysis/run.py [--ruleset futsal\|classic]` | `service/api.py` (ingest) + `service/worker.py` (GPU) |
 | Input | One whole video file on disk | 60-second clips uploaded over HTTP, one per match-minute |
 | Output | An annotated `.mp4` + printed summary | Rows in Azure SQL + an HTTP callback with cumulative stats |
 | Team fit | `fit_from_video_or_load()` over the video | `Session.ensure_fit()` on clip 1, silhouette quality guard |
@@ -75,8 +80,9 @@ The same CV pipeline classes are used in two very different entry points:
 | Rendering | Yes (draws overlays) | **No** — the service never renders video |
 
 Both paths share: `PlayerDetector`, `GSFATeamClassifier`, `PlayerTracker`,
-`BallTracker`, `CarrierEngine`, `PassEventTracker`. The possession **math** is written
-once and reused — see [ARCHITECTURE.md](ARCHITECTURE.md).
+`BallTracker`, `CarrierEngine`, `PassEventTracker` (`modules/`) — each constructed from a
+**`RulesetConfig`** (`rulesets/`) selected per run/match. The possession **math** is
+written once and reused — see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 

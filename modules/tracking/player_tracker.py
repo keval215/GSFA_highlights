@@ -18,13 +18,8 @@ from typing import List
 import numpy as np
 from boxmot.trackers.bbox.botsort.botsort import BotSort
 
-from detectors.player_detector import Detection
+from modules.detectors.player_detector import Detection
 
-
-# Track buffer is scaled internally by frame_rate/30 — we want lost tracks
-# kept alive for ~2 seconds, which covers a typical pass duration but
-# stops well short of long ReID territory.
-_TRACK_BUFFER_FRAMES_AT_30FPS = 60
 
 # SigLIP embedding width produced by GSFATeamClassifier (mean of SigLIP's
 # last_hidden_state; google/siglip-base-patch16-224 → hidden_size=768). Used as
@@ -34,20 +29,42 @@ _SIGLIP_EMB_DIM = 768
 
 
 class PlayerTracker:
-    """BoT-SORT wrapper that consumes external SigLIP embeddings."""
+    """BoT-SORT wrapper that consumes external SigLIP embeddings.
 
-    def __init__(self, fps: float, cmc_method: str = "ecc") -> None:
+    All BoT-SORT association thresholds below default to today's futsal-tuned
+    values but are real constructor parameters — a ruleset config supplies
+    its own values explicitly (e.g. classic football's larger roster means
+    more simultaneous tracks/occlusion, so these are prime candidates to
+    differ per sport).
+    """
+
+    def __init__(
+        self,
+        fps: float,
+        cmc_method: str = "ecc",
+        *,
+        track_high_thresh: float = 0.5,
+        track_low_thresh: float = 0.1,
+        new_track_thresh: float = 0.6,
+        match_thresh: float = 0.8,
+        proximity_thresh: float = 0.5,
+        appearance_thresh: float = 0.25,
+        track_buffer_frames_at_30fps: int = 60,
+    ) -> None:
         self.tracker = BotSort(
             reid_model         = None,
             with_reid          = True,
             cmc_method         = cmc_method,
-            track_high_thresh  = 0.5,
-            track_low_thresh   = 0.1,
-            new_track_thresh   = 0.6,
-            match_thresh       = 0.8,
-            proximity_thresh   = 0.5,
-            appearance_thresh  = 0.25,
-            track_buffer       = _TRACK_BUFFER_FRAMES_AT_30FPS,
+            track_high_thresh  = track_high_thresh,
+            track_low_thresh   = track_low_thresh,
+            new_track_thresh   = new_track_thresh,
+            match_thresh       = match_thresh,
+            proximity_thresh   = proximity_thresh,
+            appearance_thresh  = appearance_thresh,
+            # Track buffer is scaled internally by frame_rate/30 — the
+            # default keeps lost tracks alive for ~2 seconds, which covers a
+            # typical pass duration but stops well short of long ReID territory.
+            track_buffer       = track_buffer_frames_at_30fps,
             frame_rate         = int(round(fps)),
             fuse_first_associate = False,
         )

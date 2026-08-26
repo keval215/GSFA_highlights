@@ -1,7 +1,7 @@
 """
 service/clip_processor.py — drives ONE 60 s clip through the existing
-pipeline classes (video_analysis/, detectors/, team_classifier/,
-tracking/ — no CV logic rewritten, no rendering).
+pipeline classes (modules/detectors, modules/team_classifier,
+modules/tracking, modules/possession — no CV logic rewritten, no rendering).
 
 Frames (15 fps stride) are processed in windows of CLIP_BATCH_WINDOW:
     Pass 1 (batched GPU, stateless): unified detect (players + ball) +
@@ -28,7 +28,7 @@ import cv2
 
 from service import config
 from service.session import MatchSession
-from video_analysis.possession import best_ball
+from modules.possession import best_ball
 from service.stats import (
     KIND_MAP,
     ClipResult,
@@ -84,7 +84,7 @@ def process_clip(
 
         # --- Pass 1: batched, stateless GPU inference -------------------
         p0 = time.perf_counter()
-        dets_list = session.models.player_det.detect_batch(win_frames, win_fidx, fps)
+        dets_list = session.player_det.detect_batch(win_frames, win_fidx, fps)
         p1 = time.perf_counter(); t["player_det"] += (p1 - p0) * 1000
 
         session.team_clf.classify_batch(win_frames, dets_list)

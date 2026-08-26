@@ -1,5 +1,5 @@
 """
-team_classifier/team_classifier.py — Unsupervised team classification
+modules/team_classifier/team_classifier.py — Unsupervised team classification
 
 Pipeline:
   1. Sample one frame per second from the video
@@ -13,11 +13,11 @@ Pipeline:
 On subsequent runs: loads from disk instantly, skips steps 1–6.
 
 Import:
-    from team_classifier.team_classifier import GSFATeamClassifier
+    from modules.team_classifier.team_classifier import GSFATeamClassifier
 
 Usage:
-    from detectors.player_detector import PlayerDetector
-    from team_classifier.team_classifier import GSFATeamClassifier
+    from modules.detectors.player_detector import PlayerDetector
+    from modules.team_classifier.team_classifier import GSFATeamClassifier
 
     player_det = PlayerDetector()
     team_clf   = GSFATeamClassifier()
@@ -49,10 +49,10 @@ import torch
 from transformers import AutoProcessor
 
 from sports.common.team import SIGLIP_MODEL_PATH, TeamClassifier, create_batches
-from detectors.cache import cache_path
+from modules.detectors.cache import cache_path
 
 if TYPE_CHECKING:
-    from detectors.player_detector import FrameDetections, PlayerDetector
+    from modules.detectors.player_detector import FrameDetections, PlayerDetector
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +105,11 @@ class GSFATeamClassifier:
         self,
         device:     str = "cuda",
         batch_size: int = 32,
+        *,
+        torso_ratio: float = TORSO_RATIO,
+        blur_threshold: float = BLUR_THRESHOLD,
+        min_crop_px: int = MIN_CROP_PX,
+        centre_crop_ratio: float = CENTRE_CROP_RATIO,
     ) -> None:
         assert device.startswith("cuda") and torch.cuda.is_available(), (
             f"GSFATeamClassifier requires CUDA (got device={device!r}, "
@@ -116,6 +121,13 @@ class GSFATeamClassifier:
         self._is_fitted   = False
         self.device       = device
         self.batch_size   = batch_size
+        # Camera-framing-dependent tuning — defaults match today's futsal
+        # values; a ruleset config supplies its own values explicitly (e.g.
+        # classic football's wider broadcast framing).
+        self.torso_ratio       = torso_ratio
+        self.blur_threshold    = blur_threshold
+        self.min_crop_px       = min_crop_px
+        self.centre_crop_ratio = centre_crop_ratio
         # cluster id (0/1) → caller-supplied team name; set once by
         # resolve_team_names() at fit time, then persisted with the pickle.
         # None ⇒ caller gave no colours; downstream falls back to team0/team1.
@@ -176,10 +188,16 @@ class GSFATeamClassifier:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _torso_crop(frame: np.ndarray, bbox: tuple) -> np.ndarray:
-        """Return top TORSO_RATIO of the bounding box — jersey only, no legs."""
+    def _torso_crop(frame: np.ndarray, bbox: tuple, torso_ratio: float = TORSO_RATIO) -> np.ndarray:
+        """Return top torso_ratio of the bounding box — jersey only, no legs.
+
+        A staticmethod taking the ratio explicitly (rather than an instance
+        method) so GoalkeeperDetector — which crops torsos independently of
+        any GSFATeamClassifier instance — can call this with its own
+        configured ratio too.
+        """
         x1, y1, x2, y2 = bbox
-        torso_y2 = y1 + int((y2 - y1) * TORSO_RATIO)
+        torso_y2 = y1 + int((y2 - y1) * torso_ratio)
         return frame[y1:torso_y2, x1:x2]
 
     @staticmethod
@@ -234,9 +252,9 @@ class GSFATeamClassifier:
             if fidx % sample_every == 0:
                 dets = player_det.detect(frame, frame_idx=fidx, fps=fps)
                 for p in dets.players:
-                    crop = self._torso_crop(frame, p.bbox)
-                    if crop.shape[0] >= MIN_CROP_PX and crop.shape[1] >= MIN_CROP_PX:
-                        if self._is_sharp(crop):
+                    crop = self._torso_crop(frame, p.bbox, self.torso_ratio)
+                    if crop.shape[0] >= self.min_crop_px and crop.shape[1] >= self.min_crop_px:
+                        if self._is_sharp(crop, self.blur_threshold):
                             crops.append(crop)
 
                 if progress and (fidx // sample_every) % 100 == 0:
@@ -325,8 +343,8 @@ class GSFATeamClassifier:
         valid_indices: list[int] = []
 
         for i, p in enumerate(detections.players):
-            crop = self._torso_crop(frame, p.bbox)
-            if crop.shape[0] >= MIN_CROP_PX and crop.shape[1] >= MIN_CROP_PX:
+            crop = self._torso_crop(frame, p.bbox, self.torso_ratio)
+            if crop.shape[0] >= self.min_crop_px and crop.shape[1] >= self.min_crop_px:
                 crops.append(crop)
                 valid_indices.append(i)
 
@@ -368,8 +386,8 @@ class GSFATeamClassifier:
         for fpos, dets in enumerate(detections_list):
             frame = frames[fpos]
             for det_idx, p in enumerate(dets.players):
-                crop = self._torso_crop(frame, p.bbox)
-                if crop.shape[0] >= MIN_CROP_PX and crop.shape[1] >= MIN_CROP_PX:
+                crop = self._torso_crop(frame, p.bbox, self.torso_ratio)
+                if crop.shape[0] >= self.min_crop_px and crop.shape[1] >= self.min_crop_px:
                     crops.append(crop)
                     index_map.append((fpos, det_idx))
 
@@ -434,7 +452,7 @@ class GSFATeamClassifier:
             if idx.size > HUE_SAMPLE_PER_CLUSTER:
                 idx = rng.choice(idx, HUE_SAMPLE_PER_CLUSTER, replace=False)
             sampled = [crops[i] for i in idx.tolist()]
-            cluster_vec[cid] = self._mean_colour_vec(sampled)
+            cluster_vec[cid] = self._mean_colour_vec(sampled, self.centre_crop_ratio)
 
         spec_vec = [self._hsv_vec(*self._colour_to_hsv(s.colour)) for s in specs]
 
@@ -458,22 +476,30 @@ class GSFATeamClassifier:
     # ---- colour helpers ------------------------------------------------
 
     @staticmethod
-    def _centre_crop(crop: np.ndarray) -> np.ndarray:
-        """Central CENTRE_CROP_RATIO box of a crop — isolates the jersey core."""
+    def _centre_crop(crop: np.ndarray, centre_crop_ratio: float = CENTRE_CROP_RATIO) -> np.ndarray:
+        """Central centre_crop_ratio box of a crop — isolates the jersey core.
+
+        Takes the ratio explicitly (rather than an instance method) so
+        GoalkeeperDetector — which computes colour vectors independently of
+        any GSFATeamClassifier instance — can call this with its own
+        configured ratio too.
+        """
         h, w = crop.shape[:2]
-        my = int(h * (1.0 - CENTRE_CROP_RATIO) / 2.0)
-        mx = int(w * (1.0 - CENTRE_CROP_RATIO) / 2.0)
+        my = int(h * (1.0 - centre_crop_ratio) / 2.0)
+        mx = int(w * (1.0 - centre_crop_ratio) / 2.0)
         return crop[my:h - my, mx:w - mx]
 
     @classmethod
-    def _mean_colour_vec(cls, crops: list[np.ndarray]) -> np.ndarray | None:
+    def _mean_colour_vec(
+        cls, crops: list[np.ndarray], centre_crop_ratio: float = CENTRE_CROP_RATIO,
+    ) -> np.ndarray | None:
         """Saturation-weighted mean HSV of the central jersey region across crops,
         returned as a cylindrical (chroma_a, chroma_b, value) vector. Returns None
         if no usable pixels were found."""
         sin_sum = cos_sum = sat_sum = val_sum = 0.0
         n_px = 0
         for crop in crops:
-            centre = cls._centre_crop(crop)
+            centre = cls._centre_crop(crop, centre_crop_ratio)
             if centre.size == 0:
                 continue
             hsv = cv2.cvtColor(centre, cv2.COLOR_BGR2HSV)

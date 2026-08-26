@@ -1,11 +1,11 @@
 """
-detectors/cache.py — Shared cache path utility
+modules/detectors/cache.py — Shared cache path utility
 
 All per-match pkl files are stored under data/cache/
 named after the video file so each match gets its own cache.
 
 Usage:
-    from detectors.cache import cache_path
+    from modules.detectors.cache import cache_path
     path = cache_path(r"C:/path/to/Video Project 8.mp4", "team_siglip")
     # -> data/cache/video_project_8_team_siglip.pkl
 """

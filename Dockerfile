@@ -46,9 +46,8 @@ WORKDIR /app
 COPY requirements-service.txt .
 RUN python3.11 -m pip install --no-cache-dir -r requirements-service.txt
 
-COPY detectors/ detectors/
-COPY team_classifier/ team_classifier/
-COPY tracking/ tracking/
+COPY modules/ modules/
+COPY rulesets/ rulesets/
 COPY video_analysis/ video_analysis/
 COPY service/ service/
 COPY sql/ sql/

@@ -14,8 +14,8 @@ from service.stats import (
     EVT_INTERCEPTION,
     LBL_LOOSE,
     LBL_OOF,
-    LBL_TEAM0,
-    LBL_TEAM1,
+    LBL_TEAM_A,
+    LBL_TEAM_B,
     MinuteCounters,
     is_expected,
     split_adjustment,
@@ -28,9 +28,9 @@ from service.stats import (
 
 def test_add_label_buckets():
     c = MinuteCounters()
-    for lbl in [LBL_TEAM0] * 3 + [LBL_TEAM1] * 2 + [LBL_LOOSE] + [LBL_OOF] * 4:
+    for lbl in [LBL_TEAM_A] * 3 + [LBL_TEAM_B] * 2 + [LBL_LOOSE] + [LBL_OOF] * 4:
         c.add_label(lbl)
-    assert (c.frames_team0, c.frames_team1, c.frames_loose, c.frames_oof) == (3, 2, 1, 4)
+    assert (c.frames_team_a, c.frames_team_b, c.frames_loose, c.frames_oof) == (3, 2, 1, 4)
 
 
 def test_unknown_label_counts_as_oof():
@@ -44,34 +44,34 @@ def test_unknown_label_counts_as_oof():
 # ---------------------------------------------------------------------------
 
 def test_flip_to_moves_frames_between_teams():
-    c = MinuteCounters(frames_team0=10, frames_team1=5)
-    c.apply_adjustment("flip_to", 1, 4)     # 4 frames belong to team1, not team0
-    assert (c.frames_team0, c.frames_team1) == (6, 9)
+    c = MinuteCounters(frames_team_a=10, frames_team_b=5)
+    c.apply_adjustment("flip_to", 1, 4)     # 4 frames belong to team_b, not team_a
+    assert (c.frames_team_a, c.frames_team_b) == (6, 9)
 
 
 def test_flip_to_clamps_at_available():
-    c = MinuteCounters(frames_team0=2, frames_team1=0)
+    c = MinuteCounters(frames_team_a=2, frames_team_b=0)
     c.apply_adjustment("flip_to", 1, 10)
-    assert (c.frames_team0, c.frames_team1) == (0, 2)
+    assert (c.frames_team_a, c.frames_team_b) == (0, 2)
 
 
 def test_drop_moves_frames_to_oof():
-    c = MinuteCounters(frames_team0=10, frames_oof=1)
+    c = MinuteCounters(frames_team_a=10, frames_oof=1)
     c.apply_adjustment("drop", 0, 3)
-    assert (c.frames_team0, c.frames_oof) == (7, 4)
+    assert (c.frames_team_a, c.frames_oof) == (7, 4)
 
 
 def test_drop_clamps_at_available():
-    c = MinuteCounters(frames_team1=2, frames_oof=0)
+    c = MinuteCounters(frames_team_b=2, frames_oof=0)
     c.apply_adjustment("drop", 1, 10)
-    assert (c.frames_team1, c.frames_oof) == (0, 2)
+    assert (c.frames_team_b, c.frames_oof) == (0, 2)
 
 
 def test_zero_or_negative_adjustment_is_noop():
-    c = MinuteCounters(frames_team0=5)
+    c = MinuteCounters(frames_team_a=5)
     c.apply_adjustment("flip_to", 1, 0)
     c.apply_adjustment("drop", 0, -3)
-    assert c.frames_team0 == 5
+    assert c.frames_team_a == 5
 
 
 # ---------------------------------------------------------------------------
@@ -86,10 +86,10 @@ def test_count_events_per_team():
     c.count_event(EVT_INTERCEPTION, 0)
     c.count_event(EVT_BALL_LOST, 1)
     c.count_event(EVT_COMPLETED, None)   # no attributable team — ignored
-    assert c.passes_completed_t0 == 2
-    assert c.passes_completed_t1 == 1
-    assert c.interceptions_t0 == 1
-    assert c.ball_lost_t1 == 1
+    assert c.passes_completed_team_a == 2
+    assert c.passes_completed_team_b == 1
+    assert c.interceptions_team_a == 1
+    assert c.ball_lost_team_b == 1
 
 
 # ---------------------------------------------------------------------------

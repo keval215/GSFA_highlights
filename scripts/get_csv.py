@@ -11,11 +11,12 @@ CSV row types
 
 Nothing is calculated here except the block accumulation.
 Possession %, Pass Accuracy %, Pass Density → derive in your analytics tool:
-  Possession %  = frames_team0 / (frames_team0 + frames_team1 + frames_loose)
-  Pass accuracy = passes_completed_t0 / (passes_completed_t0 + interceptions_t0 + ball_lost_t0)
-  Pass density  = passes_completed_t0 / actual_duration_sec * 60
+  Possession %  = frames_team_a / (frames_team_a + frames_team_b + frames_loose)
+  Pass accuracy = passes_completed_team_a / (passes_completed_team_a + interceptions_team_a + ball_lost_team_a)
+  Pass density  = passes_completed_team_a / actual_duration_sec * 60
 
-NOTE: interceptions_t0 = passes BY t0 that were intercepted (by t1), per schema.
+NOTE: interceptions_team_a = passes BY team_a that were intercepted (by team_b), per schema.
+CSV header columns changed in v6: team0/team1 (and _t0/_t1) → team_a/team_b.
 
 Usage
 ─────
@@ -66,8 +67,8 @@ CSV_FIELDS = [
     # identity / grouping
     "row_type",
     "match_id",
-    "team0_name",
-    "team1_name",
+    "team_a_name",
+    "team_b_name",
     "half",              # 1 | 2 | "" for match_total
     "period_label",      # H1_M01 / H1_B01 / MATCH_TOTAL
     # timing (cumulative within half; 0..total for match_total)
@@ -76,25 +77,25 @@ CSV_FIELDS = [
     "actual_duration_sec",
     "clip_count",
     # raw frame counters — no calculation
-    "frames_team0",
-    "frames_team1",
+    "frames_team_a",
+    "frames_team_b",
     "frames_loose",      # ball in foot-zone, multiple teams present
     "frames_oof",        # ball out of frame / out of play
     # raw pass / turnover counters — no calculation
-    "passes_completed_t0",
-    "passes_completed_t1",
-    "interceptions_t0",  # passes BY t0 that were intercepted
-    "interceptions_t1",  # passes BY t1 that were intercepted
-    "ball_lost_t0",
-    "ball_lost_t1",
+    "passes_completed_team_a",
+    "passes_completed_team_b",
+    "interceptions_team_a",  # passes BY t0 that were intercepted
+    "interceptions_team_b",  # passes BY t1 that were intercepted
+    "ball_lost_team_a",
+    "ball_lost_team_b",
 ]
 
 # Columns that are summed when building blocks / totals
 STAT_COLS = [
-    "frames_team0", "frames_team1", "frames_loose", "frames_oof",
-    "passes_completed_t0", "passes_completed_t1",
-    "interceptions_t0",   "interceptions_t1",
-    "ball_lost_t0",       "ball_lost_t1",
+    "frames_team_a", "frames_team_b", "frames_loose", "frames_oof",
+    "passes_completed_team_a", "passes_completed_team_b",
+    "interceptions_team_a",   "interceptions_team_b",
+    "ball_lost_team_a",       "ball_lost_team_b",
 ]
 
 
@@ -129,8 +130,8 @@ def make_row(row_type, match_id, team0, team1, half,
     return {
         "row_type":           row_type,
         "match_id":           match_id,
-        "team0_name":         team0,
-        "team1_name":         team1,
+        "team_a_name":         team0,
+        "team_b_name":         team1,
         "half":               half,
         "period_label":       label,
         "period_start_sec":   round(float(start_sec),   2),
@@ -209,24 +210,24 @@ def process_match(conn, match_id):
 
     # Match metadata
     cur.execute(
-        "SELECT team0_name, team1_name FROM matches WHERE match_id = ?",
+        "SELECT team_a_name, team_b_name FROM matches WHERE match_id = ?",
         match_id,
     )
     m = cur.fetchone()
     if m is None:
         raise ValueError(f"match_id '{match_id}' not found in matches table")
-    team0 = m.team0_name or "Team 0"
-    team1 = m.team1_name or "Team 1"
+    team0 = m.team_a_name or "Team 0"
+    team1 = m.team_b_name or "Team 1"
 
     # All minute stats for this match
     cur.execute(
         """
         SELECT half, minute,
                clip_duration_seconds,
-               frames_team0, frames_team1, frames_loose, frames_oof,
-               passes_completed_t0, passes_completed_t1,
-               interceptions_t0,    interceptions_t1,
-               ball_lost_t0,        ball_lost_t1
+               frames_team_a, frames_team_b, frames_loose, frames_oof,
+               passes_completed_team_a, passes_completed_team_b,
+               interceptions_team_a,    interceptions_team_b,
+               ball_lost_team_a,        ball_lost_team_b
         FROM   minute_stats
         WHERE  match_id = ?
         ORDER  BY half, minute

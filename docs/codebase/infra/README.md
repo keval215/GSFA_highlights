@@ -83,3 +83,10 @@ they run fast in CI/local without a GPU.
 ## Deploy/runbook
 `docs/azure_deploy.md` is the human runbook for the VM (bootstrapping
 `/etc/gsfa-highlights.env`, etc.). `docs/API.md` is the HTTP + env-var reference.
+
+## Live ingest (RTMP)
+Production clips are not pushed over the public API — an **RTMP server on the same VM**
+(port 1935, exposed to the internet, stream-key gated) segments the live broadcast into
+~60 s clips and POSTs them to `localhost:8000/api/clips`. That RTMP server is a separate
+VM process, **not** in this repo or `docker-compose.yml`. See
+[`docs/azure_deploy.md` → "RTMP live ingest"](../../azure_deploy.md#rtmp-live-ingest).

@@ -2,8 +2,8 @@
 modules/detectors/goalkeeper_detector.py — Goalkeeper classification by jersey colour
 
 No fit stage, no goal-post dependency, no tracking. A player IS the
-goalkeeper because their jersey colour matches team0_gk_colour or
-team1_gk_colour — the reference colours are known constants (supplied by the
+goalkeeper because their jersey colour matches team_a_gk_colour or
+team_b_gk_colour — the reference colours are known constants (supplied by the
 caller), so there is nothing to learn from video.
 
 Runs independently of GSFATeamClassifier ("in parallel"): both classifiers
@@ -29,7 +29,7 @@ Usage:
     team_clf   = GSFATeamClassifier()
     team_clf.fit_from_video_or_load(video_path, player_det)
 
-    gk_det = GoalkeeperDetector(team0_gk_colour="#00FF00", team1_gk_colour="black")
+    gk_det = GoalkeeperDetector(team_a_gk_colour="#00FF00", team_b_gk_colour="black")
 
     # Per-frame:
     dets = player_det.detect(frame, frame_idx=fidx, fps=fps)
@@ -83,8 +83,8 @@ class GoalkeeperDetector:
 
     def __init__(
         self,
-        team0_gk_colour: str,
-        team1_gk_colour: str,
+        team_a_gk_colour: str,
+        team_b_gk_colour: str,
         max_colour_dist: float = MAX_GK_COLOUR_DIST,
         *,
         torso_ratio: float = TORSO_RATIO,
@@ -98,8 +98,8 @@ class GoalkeeperDetector:
         self.torso_ratio = torso_ratio
         self.centre_crop_ratio = centre_crop_ratio
         self._ref_vec: list[np.ndarray] = [
-            GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team0_gk_colour)),
-            GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team1_gk_colour)),
+            GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team_a_gk_colour)),
+            GSFATeamClassifier._hsv_vec(*GSFATeamClassifier._colour_to_hsv(team_b_gk_colour)),
         ]
 
     # ------------------------------------------------------------------

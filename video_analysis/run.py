@@ -81,7 +81,7 @@ from modules.possession.labels import (  # noqa: E402
 # ---------------------------------------------------------------------------
 # SUPERVISION ANNOTATORS
 # ---------------------------------------------------------------------------
-# Index 0 = team0 (blue), 1 = team1 (red), 2 = unclassified (grey)
+# Index 0 = team_a (blue), 1 = team_b (red), 2 = unclassified (grey)
 _PALETTE = sv.ColorPalette.from_hex(["#0050FF", "#FF5000", "#A0A0A0"])
 
 _ellipse_ann  = sv.EllipseAnnotator(color=_PALETTE, thickness=1)
@@ -187,7 +187,7 @@ def draw_frame(
 # ---------------------------------------------------------------------------
 
 def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH,
-        team0_gk_colour: str | None = None, team1_gk_colour: str | None = None,
+        team_a_gk_colour: str | None = None, team_b_gk_colour: str | None = None,
         ruleset: str = DEFAULT_RULESET,
         model_path: str | None = None, model_classes: str | None = None,
         imgsz: int | None = None, detect_classes: str | None = None) -> None:
@@ -220,17 +220,17 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH,
     )
     team_clf.fit_from_video_or_load(video_path, player_det)
 
-    # team0_gk_colour/team1_gk_colour: hex ("#FF6600") or CSS name ("orange"),
+    # team_a_gk_colour/team_b_gk_colour: hex ("#FF6600") or CSS name ("orange"),
     # same format as team colours. Both required to enable GK classification
     # (direct jersey-colour match, runs independently of team_clf); omit
     # either to skip GK classification entirely.
     gk_det = (GoalkeeperDetector(
-                  team0_gk_colour, team1_gk_colour,
+                  team_a_gk_colour, team_b_gk_colour,
                   max_colour_dist   = rs.max_gk_colour_dist,
                   torso_ratio       = rs.torso_ratio,
                   centre_crop_ratio = rs.centre_crop_ratio,
               )
-              if team0_gk_colour and team1_gk_colour else None)
+              if team_a_gk_colour and team_b_gk_colour else None)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -398,8 +398,8 @@ def _parse_args() -> "argparse.Namespace":
     p.add_argument("--out", default=OUTPUT_PATH, help="Output annotated .mp4 path")
     p.add_argument("--ruleset", default=DEFAULT_RULESET, choices=available_rulesets(),
                     help="Which sport's tuning to use")
-    p.add_argument("--team0-gk-colour", default=None)
-    p.add_argument("--team1-gk-colour", default=None)
+    p.add_argument("--team-a-gk-colour", default=None)
+    p.add_argument("--team-b-gk-colour", default=None)
     p.add_argument("--model-path", default=None,
                     help="Override the ruleset's player_model_weights (test a different .pt)")
     p.add_argument("--model-classes", default=None,
@@ -420,8 +420,8 @@ if __name__ == "__main__":
     run(
         video_path      = args.video,
         out_path        = args.out,
-        team0_gk_colour = args.team0_gk_colour,
-        team1_gk_colour = args.team1_gk_colour,
+        team_a_gk_colour = args.team_a_gk_colour,
+        team_b_gk_colour = args.team_b_gk_colour,
         ruleset         = args.ruleset,
         model_path      = args.model_path,
         model_classes   = args.model_classes,

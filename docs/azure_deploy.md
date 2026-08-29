@@ -262,6 +262,31 @@ If you expose Uvicorn on port 8000 directly (no nginx), no extra config is neede
 
 ---
 
+## RTMP live ingest
+
+In production, clips are **not** pushed by an external client over the public API. A live
+broadcast is published via **RTMP to a server running on this same VM**, which segments the
+stream into ~60 s clips and `POST`s each one to `http://localhost:8000/api/clips` over
+loopback.
+
+- **Port 1935/TCP is exposed to the internet** so the broadcast encoder can publish. The
+  only gate is the **stream key** in the publish URL — there is no other RTMP auth.
+  Recommended hardening: scope the NSG source range to the encoder's IP(s), and rotate
+  stream keys. Add the NSG rule below (§9).
+- Because the relay talks to the API over **loopback**, clip bytes never traverse the
+  public network for ingest, and the lack of auth on `:8000` (§9) is acceptable for this
+  path — keep `:8000` closed to the internet.
+- The relay is responsible for supplying **every** `POST /api/clips` form field:
+  `match_id`, `half`, `clip_duration_seconds`, all six `team_a_*` / `team_b_*` fields
+  (names + outfield colours + GK colours — **all required**, blank ⇒ `422`), and
+  `ruleset` (omit or send `classic`). See [`docs/API.md`](API.md).
+- The RTMP server, its segmentation mechanism, stream-key management, and how a stream
+  maps to a `match_id` + team metadata live **outside this repo** and are not covered here.
+- The RTMP server is a separate process on the VM (not part of `docker-compose.yml`); it
+  reaches the api container via the published `8000:8000` port on `localhost`.
+
+---
+
 ## 8. Build and Start the Stack
 
 ```bash
@@ -288,7 +313,12 @@ The container exposes port 8000. Uvicorn serves the FastAPI app with a single wo
 |----------|------|------|----------|--------|--------|
 | 100 | SSH | 22 | TCP | Your IP or range | Allow |
 | 200 | WebApp | 8000 | TCP | Your IP or range | Allow |
+| 300 | RTMP | 1935 | TCP | Broadcast encoder IP(s) — avoid `0.0.0.0/0` | Allow |
 | 65000 | DenyAll | * | * | * | Deny |
+
+Port 1935 is the RTMP live-ingest path (see "RTMP live ingest" above). It currently accepts
+any source; scope it to the encoder's IP range and rely on the stream key as a second
+factor. Port 8000 stays closed to the internet — the RTMP relay reaches it over loopback.
 
 **Do not open port 8000 to `0.0.0.0/0` unless you add authentication to the FastAPI app first.** The current `server.py` has no auth layer. Restricting to your office/home IP range is sufficient for v1.
 

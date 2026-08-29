@@ -83,16 +83,17 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   misconfig that crashes the worker at model load.
 
 ## `api.py` (FastAPI, no GPU)
-- `POST /api/clips` (multipart): hygiene checks (content type, size cap), validates
+- `POST /api/clips` (multipart): hygiene checks (content type, size cap), all six
+  `team_*` fields required and non-blank (`_require_nonblank` ⇒ `422`), validates
   `ruleset` against the `rulesets` registry (`422` on unknown), `db.ensure_match`
   (first clip creates the match — with its `ruleset`, fixed for the match's lifetime —
-  and stores `team0_colour`/`team1_colour`/`team0_gk_colour`/`team1_gk_colour`, now all
-  **required** fields; later clips fill missing team-name metadata via COALESCE and
-  ignore any `ruleset` value they send), resolve/claim the minute (`db.claim_next_minute`
+  and stores the six `team_a_*`/`team_b_*` fields; later clips must still send them but
+  they are ignored past the first, and any `ruleset` they send is ignored),
+  resolve/claim the minute (`db.claim_next_minute`
   if not supplied), dedupe (`minute_exists` or blob already exists ⇒ `202 duplicate`),
   else `blob.upload_stream` + `queue.enqueue` ⇒ `202`.
-- `POST /post-processing` (multipart): same `ruleset` validation + required colour
-  fields as above; accepts a whole-match video, stores it at
+- `POST /post-processing` (multipart): same `ruleset` validation + the same six required
+  `team_*` fields as above; accepts a whole-match video, stores it at
   `clips/<match_id>/post_processing.mp4`, enqueues a background job, and returns `200`
   once the upload is fully received. The worker deletes the blob after processing.
 - `GET /health` — 200 if the worker heartbeat is < 300 s old, else 503.
@@ -207,7 +208,8 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - `MinuteCounters` does the per-minute bucketing (`add_label`), correction
   (`apply_adjustment` — `flip_to`/`drop`, clamped), and event tallying (`count_event`).
 - Helpers: `split_adjustment(n, carryover)`, `is_expected(...)` (ordering guard),
-  `build_payload(...)` (the flat advance-stats body; **positional** team mapping 0→a, 1→b).
+  `build_payload(...)` (the flat advance-stats body; maps internal `team_a`/`team_b`
+  counters onto the unchanged wire keys `*_a`/`*_b` — cluster id 0 → team_a → a).
 - Deliberately torch/boxmot/pyodbc-free so the correctness-critical math is testable
   (`tests/test_stats.py`).
 
@@ -218,18 +220,19 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   upsert this minute row (PK = `(match_id, half, minute)` ⇒ replay overwrites, now also
   storing `clip_duration_seconds`) → insert events → advance match progress → insert the
   **outbox** row with a fresh cumulative payload. Rolls back on any error.
-- Match upsert (`ensure_match` — now also takes `team0/1_gk_colour` and `ruleset`;
+- Match upsert (`ensure_match` — takes `team_a/b_name`, `team_a/b_colour`,
+  `team_a/b_gk_colour` and `ruleset`;
   `ruleset` is written only on the `INSERT` branch, never the `UPDATE` branch, so it's
   fixed at match creation; COALESCE so later clips can't overwrite name/colour fields),
   atomic minute claim (`claim_next_minute` via `UPDATE...OUTPUT`), `minute_exists`,
-  `get_match_progress`, `get_match_ruleset` (returns `"futsal"` if the row is somehow
+  `get_match_progress`, `get_match_ruleset` (returns `"classic"` if the row is somehow
   missing — should not happen, callers `ensure_match()` first), `get_team_specs` (only if
   both teams have name **and** colour), `get_gk_colours` (only if **both** GK colours are
   set — independent of team names). Outbox ops (`fetch_pending`, `mark_sent`,
   `mark_failed`) for the notifier.
 - `post_processing_exists(conn, match_id)` / `write_post_processing_result(...)` — dedupe
   check and upsert for the whole-match `post_processing` table, keyed by `match_id`;
-  stores the team metadata snapshot (including `team0/1_gk_colour`) alongside the raw
+  stores the team metadata snapshot (including `team_a/b_gk_colour`) alongside the raw
   counters. Does **not** currently take/store a `ruleset` value. Unlike
   `write_clip_result`, this does **not** touch `callback_outbox` — no advance-stats
   callback is sent for whole-match uploads.
@@ -255,6 +258,43 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   Exhaustion ⇒ mark `failed`, log loudly, **continue** (SQL stays source of truth).
 - If `CALLBACK_URL`/`SUPER_ADMIN_KEY` are unset, rows stay `pending` (nothing lost).
 - **Does NOT** compute stats — it just ships the payload `db.py` already built.
+
+---
+
+## Why clips stay ~60 s (and why longer doesn't help detection)
+
+"60 s" is a **client-side convention, not an enforced limit**. `scripts/upload_clips.ps1`
+slices the source with `ffmpeg -t 60`; the API only checks `clip_duration_seconds > 0` and
+the `MAX_UPLOAD_GB` byte cap (`service/api.py`). The pipeline treats a clip as an opaque
+video of arbitrary length.
+
+**Detection / tracking quality is independent of clip length.** `MatchSession`
+(`session.py`) constructs `tracker` / `ball_tracker` / `carrier_eng` / `pass_track` and the
+team fit **once** and reuses them for every clip of the match (the session is evicted only
+after `SESSION_IDLE_EVICT_S` = 30 min idle). A clip boundary is therefore **not** a cold
+start — the trackers, ball Kalman, carrier hysteresis and pass FSM all carry their state
+across it, and a pass that spans the boundary resolves normally via
+`session.carryover_travel_frames` + a `PriorCorrection`. The only genuine cold start is
+match start / worker restart / session eviction. Making clips longer just spreads that one
+discontinuity over more frames — a marginal robustness gain, not an accuracy gain.
+
+**Longer clips are actively worse in production:**
+
+- **`QUEUE_VISIBILITY_SEC` = 90 s and the worker never renews the lease during
+  processing.** A 60 s clip already takes ~85–90 s to process (see `docs/API.md`'s
+  `last_clip_processing_seconds: 87.4`). If processing exceeds 90 s the queue message
+  becomes visible again, gets re-dequeued, and after `MAX_DEQUEUE_COUNT` (3) it is moved to
+  the poison queue and the clip is lost.
+- **"1 clip = 1 minute" is baked in.** `db.claim_next_minute`, `stats.is_expected` (the
+  ordering guard), one `minute_stats` row per minute, and `db._apply_prior_correction`
+  (which corrects only the *immediately* prior minute row) all assume it.
+- **Live latency.** Per-minute clips keep the advance-stats callback near-real-time; longer
+  clips push the stats feed further behind live.
+
+**If you need maximum temporal context** (e.g. a one-off full re-analysis), use the
+whole-match `POST /api/post-processing` path — it runs the entire match through a single
+`process_clip` call with the trackers/FSM live for the whole file. It writes one aggregate
+row to `post_processing` and does **not** emit the live advance-stats callback.
 
 ---
 

@@ -7,7 +7,7 @@ equivalent counting independently in service/stats.py.
 
 from __future__ import annotations
 
-from modules.possession.labels import POSSESS_LOOSE, POSSESS_OOF, POSSESS_TEAM0, POSSESS_TEAM1
+from modules.possession.labels import POSSESS_LOOSE, POSSESS_OOF, POSSESS_TEAM_A, POSSESS_TEAM_B
 
 
 class PossessionStats:
@@ -22,8 +22,8 @@ class PossessionStats:
 
     def __init__(self) -> None:
         self.frame_counts: dict[str, int] = {
-            POSSESS_TEAM0: 0,
-            POSSESS_TEAM1: 0,
+            POSSESS_TEAM_A: 0,
+            POSSESS_TEAM_B: 0,
             POSSESS_LOOSE: 0,
             POSSESS_OOF:   0,
         }
@@ -35,8 +35,9 @@ class PossessionStats:
 
     def apply_adjustments(self, adjustments: list[tuple[str, int, int]]) -> None:
         for kind, team_id, n in adjustments:
-            src_label = POSSESS_TEAM0 if team_id == 0 else POSSESS_TEAM1
-            other_label = POSSESS_TEAM1 if team_id == 0 else POSSESS_TEAM0
+            # team_id 0 → team_a, 1 → team_b
+            src_label = POSSESS_TEAM_A if team_id == 0 else POSSESS_TEAM_B
+            other_label = POSSESS_TEAM_B if team_id == 0 else POSSESS_TEAM_A
             if kind == "flip_to":
                 # We credited `other` provisionally; move n frames over to team_id.
                 move = min(n, self.frame_counts[other_label])
@@ -49,12 +50,12 @@ class PossessionStats:
                 self.frame_counts[POSSESS_OOF] += move
 
     def percentages(self) -> tuple[float, float]:
-        denom = self.frame_counts[POSSESS_TEAM0] + self.frame_counts[POSSESS_TEAM1]
+        denom = self.frame_counts[POSSESS_TEAM_A] + self.frame_counts[POSSESS_TEAM_B]
         if denom == 0:
             return 0.0, 0.0
         return (
-            100.0 * self.frame_counts[POSSESS_TEAM0] / denom,
-            100.0 * self.frame_counts[POSSESS_TEAM1] / denom,
+            100.0 * self.frame_counts[POSSESS_TEAM_A] / denom,
+            100.0 * self.frame_counts[POSSESS_TEAM_B] / denom,
         )
 
     def summary(self) -> str:
@@ -62,8 +63,8 @@ class PossessionStats:
         d = max(1, self.total)
         return "\n".join([
             "--- Possession Summary (denominator excludes loose/OOF) ---",
-            f"  Team 0: {t0:.1f}%",
-            f"  Team 1: {t1:.1f}%",
+            f"  Team A: {t0:.1f}%",
+            f"  Team B: {t1:.1f}%",
             f"  Loose : {100*self.frame_counts[POSSESS_LOOSE]/d:.1f}%",
             f"  OOF   : {100*self.frame_counts[POSSESS_OOF]/d:.1f}%",
         ])

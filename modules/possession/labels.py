@@ -6,11 +6,12 @@ can depend on the label vocabulary without depending on each other.
 
 from __future__ import annotations
 
-# Possession labels surfaced to stats
-POSSESS_TEAM0 = "team0"
-POSSESS_TEAM1 = "team1"
-POSSESS_LOOSE = "loose"
-POSSESS_OOF   = "oof"
+# Possession labels surfaced to stats.
+# Convention: CV cluster id 0 → team_a, cluster id 1 → team_b.
+POSSESS_TEAM_A = "team_a"
+POSSESS_TEAM_B = "team_b"
+POSSESS_LOOSE  = "loose"
+POSSESS_OOF    = "oof"
 
 # Pass event kinds
 EVT_COMPLETED    = "completed"

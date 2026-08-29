@@ -75,7 +75,7 @@ through the entire pipeline — see [ARCHITECTURE.md §4](../ARCHITECTURE.md).
 goal-post dependency, and no tracking**: a player IS the goalkeeper because their jersey
 colour matches a known reference colour supplied by the caller.
 
-- `__init__(team0_gk_colour, team1_gk_colour, max_colour_dist=60.0, *, torso_ratio=0.55,
+- `__init__(team_a_gk_colour, team_b_gk_colour, max_colour_dist=60.0, *, torso_ratio=0.55,
   centre_crop_ratio=0.50)` — the two reference colours (hex or CSS name, same format as
   outfield team colours) are converted once to `GSFATeamClassifier`'s cylindrical HSV
   colour-vector space (`_hsv_vec(_colour_to_hsv(...))`) and stored. `torso_ratio` /
@@ -109,7 +109,7 @@ colour matches a known reference colour supplied by the caller.
   `GSFATeamClassifier`'s static colour-vector helpers (`_hsv_vec`, `_colour_to_hsv`,
   `_torso_crop`, `_mean_colour_vec`) rather than depending on a classifier instance.
 - Used in local mode by `video_analysis/run.py::run` (only constructed if both
-  `--team0-gk-colour`/`--team1-gk-colour` are supplied) and in service mode by
+  `--team-a-gk-colour`/`--team-b-gk-colour` are supplied) and in service mode by
   `service/session.py::MatchSession` / `service/clip_processor.py`.
 
 ---

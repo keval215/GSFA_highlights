@@ -3,10 +3,14 @@ param(
     [string]$ServerUrl = "http://4.186.40.179:8000/api/clips",
     [string]$MatchId = "6a315d21b68f0f0bbf39d96b",
     [int]$Half = 1,
-    [string]$Team0Name = "mnv",
-    [string]$Team1Name = "mfc",
-    [string]$Team0Colour = "#FFA500",
-    [string]$Team1Colour = "#FFFF00",
+    [string]$TeamAName = "mnv",
+    [string]$TeamBName = "mfc",
+    [string]$TeamAColour = "#FFA500",
+    [string]$TeamBColour = "#FFFF00",
+    [string]$TeamAGkColour = "#00FF00",
+    [string]$TeamBGkColour = "#000000",
+    [ValidateSet("classic", "futsal")]
+    [string]$Ruleset = "classic",
     [string]$OutputDir = "$PSScriptRoot\..\data\clips_upload"
 )
 
@@ -68,10 +72,13 @@ for ($clipIndex = 0; $clipIndex -lt $clipCount; $clipIndex++) {
         "-F", "half=$Half",
         "-F", "minute=$minute",
         "-F", "clip_duration_seconds=$clipDurationSeconds",
-        "-F", "team0_name=$Team0Name",
-        "-F", "team1_name=$Team1Name",
-        "-F", "team0_colour=$Team0Colour",
-        "-F", "team1_colour=$Team1Colour",
+        "-F", "team_a_name=$TeamAName",
+        "-F", "team_b_name=$TeamBName",
+        "-F", "team_a_colour=$TeamAColour",
+        "-F", "team_b_colour=$TeamBColour",
+        "-F", "team_a_gk_colour=$TeamAGkColour",
+        "-F", "team_b_gk_colour=$TeamBGkColour",
+        "-F", "ruleset=$Ruleset",
         "$ServerUrl/api/clips"
     )
 

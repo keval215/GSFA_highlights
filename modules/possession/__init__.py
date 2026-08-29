@@ -9,8 +9,8 @@ from modules.possession.labels import (
     EVT_INTERCEPTION,
     POSSESS_LOOSE,
     POSSESS_OOF,
-    POSSESS_TEAM0,
-    POSSESS_TEAM1,
+    POSSESS_TEAM_A,
+    POSSESS_TEAM_B,
 )
 from modules.possession.pass_event_tracker import PassEvent, PassEventTracker
 from modules.possession.possession_stats import PossessionStats
@@ -26,8 +26,8 @@ __all__ = [
     "EVT_INTERCEPTION",
     "POSSESS_LOOSE",
     "POSSESS_OOF",
-    "POSSESS_TEAM0",
-    "POSSESS_TEAM1",
+    "POSSESS_TEAM_A",
+    "POSSESS_TEAM_B",
     "PassEvent",
     "PassEventTracker",
     "PossessionStats",

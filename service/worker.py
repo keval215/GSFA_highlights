@@ -104,12 +104,13 @@ class Worker:
         if progress is None:
             # api normally creates the match row; cover the gap anyway. The
             # actual requested ruleset isn't available on this path (it's
-            # not carried in the clip queue message), so this defaults to
-            # futsal — log loudly since a silently-wrong ruleset assignment
-            # would otherwise just look like slightly-off stats later.
+            # not carried in the clip queue message), so this falls back to
+            # the default ruleset (classic) — log loudly since a
+            # silently-wrong ruleset assignment would otherwise just look
+            # like slightly-off stats later.
             log.warning("clip %s h%d m%d arrived with no matches row yet — "
-                        "creating one with ruleset=futsal (default); if this "
-                        "match was meant to be classic, its ruleset is now "
+                        "creating one with ruleset=classic (default); if this "
+                        "match was meant to be futsal, its ruleset is now "
                         "wrong and cannot be changed after creation",
                         msg.match_id, msg.half, msg.minute)
             db.ensure_match(self.conn, msg.match_id)
@@ -177,9 +178,9 @@ class Worker:
             return
 
         db.ensure_match(self.conn, msg.match_id,
-                        msg.team0_name, msg.team1_name,
-                        msg.team0_colour, msg.team1_colour,
-                        msg.team0_gk_colour, msg.team1_gk_colour)
+                        msg.team_a_name, msg.team_b_name,
+                        msg.team_a_colour, msg.team_b_colour,
+                        msg.team_a_gk_colour, msg.team_b_gk_colour)
         # ensure_match() above only sets ruleset on first INSERT — the row
         # already exists (created by the /post-processing upload) with
         # whichever ruleset that request specified, so this reads it back.
@@ -201,12 +202,12 @@ class Worker:
             db.write_post_processing_result(
                 self.conn,
                 result.minute_row,
-                team0_name=msg.team0_name,
-                team1_name=msg.team1_name,
-                team0_colour=msg.team0_colour,
-                team1_colour=msg.team1_colour,
-                team0_gk_colour=msg.team0_gk_colour,
-                team1_gk_colour=msg.team1_gk_colour,
+                team_a_name=msg.team_a_name,
+                team_b_name=msg.team_b_name,
+                team_a_colour=msg.team_a_colour,
+                team_b_colour=msg.team_b_colour,
+                team_a_gk_colour=msg.team_a_gk_colour,
+                team_b_gk_colour=msg.team_b_gk_colour,
                 video_blob_path=msg.blob_path,
             )
 

@@ -130,7 +130,7 @@ class GSFATeamClassifier:
         self.centre_crop_ratio = centre_crop_ratio
         # cluster id (0/1) → caller-supplied team name; set once by
         # resolve_team_names() at fit time, then persisted with the pickle.
-        # None ⇒ caller gave no colours; downstream falls back to team0/team1.
+        # None ⇒ caller gave no colours; downstream falls back to team_a/team_b.
         self.team_id_to_name: dict[int, str] | None = None
 
     # ------------------------------------------------------------------

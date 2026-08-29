@@ -1,15 +1,17 @@
 """CLASSIC — 11-a-side football ruleset.
 
-Structurally complete (every field the pipeline needs is set), but several
-numeric values below are starting points, not calibrated numbers — marked
-PLACEHOLDER. Classic football's wider broadcast camera framing (whole pitch
-visible vs. futsal's close court-side shot), longer pitch, and larger roster
-(more simultaneous tracks/occlusion) are all reasons these are expected to
-differ from futsal's tuned values, but the actual numbers need calibration
-against real 11-a-side footage before this ruleset is production-ready.
-`player_model_weights` in particular MUST be replaced with a real
-classic-trained YOLOv11m checkpoint before this ruleset is usable — there is
-no trained classic model yet.
+Structurally complete and committed as the starting production profile for
+11-a-side. The values below are tuned for classic football's wider broadcast
+camera framing (whole pitch visible vs. futsal's close court-side shot),
+longer pitch, and larger roster (more simultaneous tracks / occlusion). They
+are reasoned starting points, not values calibrated frame-by-frame against a
+large 11-a-side corpus — expect to nudge them once real match telemetry is in
+(the fields most likely to move are noted inline).
+
+`player_model_weights` here is only the local-dev default for
+`video_analysis/run.py`; the production service resolves classic weights from
+the `CLASSIC_PLAYER_WEIGHTS` env var (see `service/config.py::player_weights`),
+which must point at a real classic-trained YOLOv11m checkpoint on the VM.
 """
 
 from __future__ import annotations
@@ -18,18 +20,20 @@ from rulesets.base import RulesetConfig
 
 CLASSIC = RulesetConfig(
     name="classic",
-    # PLACEHOLDER — no classic-trained checkpoint exists yet. The service
-    # requires the CLASSIC_PLAYER_WEIGHTS env var to be set before this
-    # ruleset can actually be used (see service/config.py); this default only
-    # matters for standalone local runs.
+    # Local-dev default only (video_analysis/run.py). The service ignores this
+    # and requires CLASSIC_PLAYER_WEIGHTS in the environment.
     player_model_weights=r"C:\Users\Admin\OneDrive\Desktop\CZ\GSFA_CLASSIC_PLAYER_DETECTION.pt",
     player_conf=0.50,
     ball_conf=0.25,
-    # PLACEHOLDER — wider broadcast framing means smaller player crops in
-    # absolute pixels; torso_ratio/blur_threshold likely need retuning once
-    # real classic footage is available.
-    torso_ratio=0.55,
-    blur_threshold=80.0,
+    # Wider broadcast framing → the player bbox is smaller on screen, so take a
+    # larger top fraction of it as the jersey crop to keep enough pixels for the
+    # SigLIP embedding (futsal uses 0.55 on its tighter, larger boxes).
+    torso_ratio=0.65,
+    # Smaller, softer torso crops from the wide shot carry less high-frequency
+    # detail, so their Laplacian variance runs lower than futsal's close-up
+    # crops. Drop the sharp-enough floor from 80 → 55 so the team fit is not
+    # starved of otherwise-usable crops. Revisit against real footage.
+    blur_threshold=55.0,
     min_crop_px=24,
     centre_crop_ratio=0.50,
     max_gk_colour_dist=60.0,
@@ -39,16 +43,17 @@ CLASSIC = RulesetConfig(
     match_thresh=0.8,
     proximity_thresh=0.5,
     appearance_thresh=0.25,
-    # PLACEHOLDER — 11 players/side means more simultaneous tracks and
-    # occlusion than futsal's 5; longer buffer keeps lost tracks alive
-    # through more traffic before giving up.
+    # 11 players/side means more simultaneous tracks and occlusion than futsal's
+    # 5; a longer buffer keeps lost tracks alive through more traffic before
+    # giving up.
     track_buffer_frames_at_30fps=90,
-    # PLACEHOLDER — longer pitch means longer/harder kicks; the ball can
-    # plausibly leave frame or blur out for longer stretches.
-    kalman_coast_frames=18,
+    # Longer pitch → harder/longer kicks; the ball can plausibly leave frame or
+    # blur out for longer stretches, so let the Kalman filter coast further
+    # before declaring the track lost.
+    kalman_coast_frames=20,
     kalman_gate_sigma=8.0,
-    # PLACEHOLDER — wider camera framing shrinks player size on screen,
-    # so the foot-zone pixel bounds likely need to shrink to match.
+    # Wider camera framing shrinks on-screen player size, so the foot-zone pixel
+    # bounds shrink to match.
     foot_zone_ratio=0.45,
     foot_zone_min_px=14,
     foot_zone_max_px=100,
@@ -56,9 +61,8 @@ CLASSIC = RulesetConfig(
     release_sustain=1,
     reception_settle=2,
     travel_min_gap=1,
-    # PLACEHOLDER — a full-size pitch means longer average pass travel time
-    # than futsal's tight court; this is the single number most likely to
-    # need real recalibration.
+    # A full-size pitch means longer average pass travel time than futsal's tight
+    # court; this is the single number most likely to need real recalibration.
     travel_timeout_frames=45,
     reference_fps=15.0,
 )

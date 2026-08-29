@@ -16,7 +16,7 @@ _RULESETS: dict[str, RulesetConfig] = {
     CLASSIC.name: CLASSIC,
 }
 
-DEFAULT_RULESET = FUTSAL.name
+DEFAULT_RULESET = CLASSIC.name
 
 
 def get_ruleset(name: str) -> RulesetConfig:

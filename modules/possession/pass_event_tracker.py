@@ -18,8 +18,8 @@ from modules.possession.labels import (
     EVT_INTERCEPTION,
     POSSESS_LOOSE,
     POSSESS_OOF,
-    POSSESS_TEAM0,
-    POSSESS_TEAM1,
+    POSSESS_TEAM_A,
+    POSSESS_TEAM_B,
 )
 
 PHASE_IDLE       = "idle"
@@ -100,7 +100,7 @@ class PassEventTracker:
 
         Returns:
           (possession_label, adjustments)
-            possession_label: one of POSSESS_TEAM{0,1} | POSSESS_LOOSE
+            possession_label: one of POSSESS_TEAM_A/B | POSSESS_LOOSE
                               | POSSESS_OOF
             adjustments     : list of (kind, team_id, frame_count) that
                               PossessionStats should retroactively apply.
@@ -290,15 +290,15 @@ class PassEventTracker:
     def _label_for_current_state(self, carrier: CarrierState) -> str:
         if self.phase == PHASE_POSS:
             team = self._passer[1] if self._passer else None
-            return POSSESS_TEAM0 if team == 0 else POSSESS_TEAM1
+            return POSSESS_TEAM_A if team == 0 else POSSESS_TEAM_B
         if self.phase in (PHASE_CAND_REL, PHASE_TRAVEL, PHASE_CAND_RCV):
             # Provisional — credit the passer's team. Adjusted later on
-            # interception / ball_lost.
+            # interception / ball_lost. (team_id 0 → team_a, 1 → team_b)
             team = self._passer[1] if self._passer else None
             if team == 0:
-                return POSSESS_TEAM0
+                return POSSESS_TEAM_A
             if team == 1:
-                return POSSESS_TEAM1
+                return POSSESS_TEAM_B
             # Falls through if passer somehow None.
         if carrier.kind == "loose":
             return POSSESS_LOOSE

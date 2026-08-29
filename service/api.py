@@ -2,27 +2,32 @@
 service/api.py — FastAPI ingestion endpoint (no GPU).
 
 POST /api/clips  multipart/form-data:
-    file (60 s mp4), match_id, team0_colour, team1_colour, team0_gk_colour,
-    team1_gk_colour
-        [+ clip_duration_seconds, half, minute, team0_name, team1_name, ruleset]
+    file (60 s mp4), match_id, clip_duration_seconds,
+    team_a_name, team_b_name, team_a_colour, team_b_colour,
+    team_a_gk_colour, team_b_gk_colour
+        [+ half, minute, ruleset]
   → upload blob clips/<match_id>/<half>_<minute>.mp4
     → enqueue {"match_id","half","minute","blob_path","clip_duration_seconds"}
   → 202 in ~1–2 s. Processing is never inline.
 
 POST /post-processing  multipart/form-data:
-    file (whole-match mp4), match_id, team0_colour, team1_colour,
-    team0_gk_colour, team1_gk_colour
-        [+ team0_name, team1_name, ruleset]
+    file (whole-match mp4), match_id,
+    team_a_name, team_b_name, team_a_colour, team_b_colour,
+    team_a_gk_colour, team_b_gk_colour
+        [+ ruleset]
     → upload blob clips/<match_id>/post_processing.mp4
         → enqueue {"kind":"post_processing", ...}
     → 200 once the upload is fully received and queued.
 
-All four colour fields are required on every request (not just the first
-clip) — team0_colour/team1_colour drive outfield cluster→team resolution,
-team0_gk_colour/team1_gk_colour drive goalkeeper colour-matching. team_name
-fields remain optional.
+All six team_* fields (names, outfield colours, GK colours) are REQUIRED on
+every request, not just the first clip — a missing or blank one is a 422. The
+outfield colours drive cluster→team resolution; the GK colours drive
+goalkeeper colour-matching (session.py's ensure_gk_ready). db.ensure_match's
+COALESCE update means only the first request's values are persisted; later
+clips still must send them but they are ignored past the first.
+Convention: CV cluster id 0 → team_a, cluster id 1 → team_b.
 
-ruleset ("futsal" | "classic", default "futsal") selects which sport's CV
+ruleset ("futsal" | "classic", default "classic") selects which sport's CV
 tuning (rulesets/ package) processes this match — foot-zone size, tracker
 thresholds, pass timing, model weights, etc. Only used on the FIRST request
 for a match_id (it creates the matches row); later requests for the same
@@ -97,6 +102,14 @@ async def _on_http_error(request: Request, exc: HTTPException):
                         headers=getattr(exc, "headers", None))
 
 
+def _require_nonblank(**fields: str) -> None:
+    """422 if any given form field is missing or blank/whitespace. `Form(...)`
+    already rejects a *missing* field; this also rejects `""` / `"  "`."""
+    empty = [name for name, val in fields.items() if not (val and val.strip())]
+    if empty:
+        raise HTTPException(422, f"required field(s) empty: {', '.join(sorted(empty))}")
+
+
 @app.on_event("startup")
 def _startup() -> None:
     global _blob, _queue
@@ -114,12 +127,12 @@ async def post_clip(
     clip_duration_seconds: float = Form(...),
     half: Optional[int] = Form(None),
     minute: Optional[int] = Form(None),
-    team0_name: Optional[str] = Form(None),
-    team1_name: Optional[str] = Form(None),
-    team0_colour: str = Form(...),   # hex "#FF6600" or CSS name "orange"
-    team1_colour: str = Form(...),
-    team0_gk_colour: str = Form(...),
-    team1_gk_colour: str = Form(...),
+    team_a_name: str = Form(...),
+    team_b_name: str = Form(...),
+    team_a_colour: str = Form(...),   # hex "#FF6600" or CSS name "orange"
+    team_b_colour: str = Form(...),
+    team_a_gk_colour: str = Form(...),
+    team_b_gk_colour: str = Form(...),
     ruleset: str = Form(DEFAULT_RULESET),   # "futsal" | "classic"
 ):
     # Basic hygiene only (no auth in v1 — NSG restricts port 8000).
@@ -133,6 +146,11 @@ async def post_clip(
         raise HTTPException(422, f"half must be >= 1, got {half}")
     if minute is not None and minute < 1:
         raise HTTPException(422, f"minute must be >= 1, got {minute}")
+    _require_nonblank(
+        team_a_name=team_a_name, team_b_name=team_b_name,
+        team_a_colour=team_a_colour, team_b_colour=team_b_colour,
+        team_a_gk_colour=team_a_gk_colour, team_b_gk_colour=team_b_gk_colour,
+    )
     try:
         get_ruleset(ruleset)
     except ValueError:
@@ -142,9 +160,9 @@ async def post_clip(
     # match's lifetime); later clips fill missing metadata only.
     conn = db.get_conn()
     try:
-        db.ensure_match(conn, match_id, team0_name, team1_name,
-                        team0_colour, team1_colour,
-                        team0_gk_colour, team1_gk_colour,
+        db.ensure_match(conn, match_id, team_a_name, team_b_name,
+                        team_a_colour, team_b_colour,
+                        team_a_gk_colour, team_b_gk_colour,
                         ruleset=ruleset)
         resolved_half   = half   if half   is not None else 1
         resolved_minute = minute if minute is not None else db.claim_next_minute(conn, match_id, resolved_half)
@@ -170,18 +188,23 @@ async def post_clip(
 async def post_processing(
     file: UploadFile = File(...),
     match_id: str = Form(...),
-    team0_name: Optional[str] = Form(None),
-    team1_name: Optional[str] = Form(None),
-    team0_colour: str = Form(...),
-    team1_colour: str = Form(...),
-    team0_gk_colour: str = Form(...),
-    team1_gk_colour: str = Form(...),
+    team_a_name: str = Form(...),
+    team_b_name: str = Form(...),
+    team_a_colour: str = Form(...),
+    team_b_colour: str = Form(...),
+    team_a_gk_colour: str = Form(...),
+    team_b_gk_colour: str = Form(...),
     ruleset: str = Form(DEFAULT_RULESET),   # "futsal" | "classic"
 ):
     if file.content_type not in ("video/mp4", "application/octet-stream", None):
         raise HTTPException(415, f"unsupported content type: {file.content_type}")
     if file.size is not None and file.size > config.MAX_UPLOAD_GB * 1024**3:
         raise HTTPException(413, f"video exceeds {config.MAX_UPLOAD_GB} GB cap")
+    _require_nonblank(
+        team_a_name=team_a_name, team_b_name=team_b_name,
+        team_a_colour=team_a_colour, team_b_colour=team_b_colour,
+        team_a_gk_colour=team_a_gk_colour, team_b_gk_colour=team_b_gk_colour,
+    )
     try:
         get_ruleset(ruleset)
     except ValueError:
@@ -189,9 +212,9 @@ async def post_processing(
 
     conn = db.get_conn()
     try:
-        db.ensure_match(conn, match_id, team0_name, team1_name,
-                        team0_colour, team1_colour,
-                        team0_gk_colour, team1_gk_colour,
+        db.ensure_match(conn, match_id, team_a_name, team_b_name,
+                        team_a_colour, team_b_colour,
+                        team_a_gk_colour, team_b_gk_colour,
                         ruleset=ruleset)
         already_processed = db.post_processing_exists(conn, match_id)
     finally:
@@ -206,12 +229,12 @@ async def post_processing(
     _queue.enqueue_post_processing(
         match_id=match_id,
         blob_path=name,
-        team0_name=team0_name,
-        team1_name=team1_name,
-        team0_colour=team0_colour,
-        team1_colour=team1_colour,
-        team0_gk_colour=team0_gk_colour,
-        team1_gk_colour=team1_gk_colour,
+        team_a_name=team_a_name,
+        team_b_name=team_b_name,
+        team_a_colour=team_a_colour,
+        team_b_colour=team_b_colour,
+        team_a_gk_colour=team_a_gk_colour,
+        team_b_gk_colour=team_b_gk_colour,
     )
     size_mb = (file.size / 1024**2) if file.size else 0.0
     log.info("received post-processing video %s (%.1f MB) — queued", match_id, size_mb)

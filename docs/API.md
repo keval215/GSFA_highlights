@@ -19,6 +19,11 @@ python -m service.worker
 **Base URL:** `http://<host>:8000`  
 **Auth:** None in v1 — access is restricted at the network level (Azure NSG on port 8000).
 
+**Production ingest:** clips are produced by an **RTMP relay running on the same VM** that
+segments the live broadcast into ~60 s clips and `POST`s each to `http://localhost:8000/api/clips`
+over loopback. The relay is responsible for supplying every form field below. See
+[`azure_deploy.md` → "RTMP live ingest"](azure_deploy.md#rtmp-live-ingest).
+
 ---
 
 ## Required environment variables
@@ -29,8 +34,8 @@ Set in `/etc/gsfa-highlights.env` (loaded via docker-compose `env_file`).
 |---|---|---|---|
 | `AZURE_STORAGE_CONNECTION_STRING` | yes | — | Blob + Queue storage connection string |
 | `SQL_CONN_STR` | yes | — | pyodbc connection string for Azure SQL `gsfa_stats` |
-| `PLAYER_WEIGHTS` | yes | — | Absolute VM path to the unified YOLOv11m weights for the `futsal` ruleset (players + ball + refs + posts) |
-| `<RULESET>_PLAYER_WEIGHTS` | only if that ruleset is used | — | e.g. `CLASSIC_PLAYER_WEIGHTS` — weights path for a non-`futsal` ruleset (see `rulesets/`). Not set on any deployment yet; selecting `ruleset=classic` fails fast at model load until it is |
+| `PLAYER_WEIGHTS` | only if `futsal` matches are served | — | Absolute VM path to the unified YOLOv11m weights for the `futsal` ruleset (players + ball + refs + posts) |
+| `<RULESET>_PLAYER_WEIGHTS` | required for the default ruleset (`classic`) | — | e.g. `CLASSIC_PLAYER_WEIGHTS` — weights path for a non-`futsal` ruleset (see `rulesets/`). `classic` is now the default ruleset, so `CLASSIC_PLAYER_WEIGHTS` must point at a real classic-trained checkpoint on the VM or the worker fails fast at model load on the first clip |
 | `CALLBACK_URL` | no | `""` | Base origin of the main app (e.g. `https://dev-server.clubduelz.in`), no path. The worker appends `/v1/pvt/tournament-duelz/{match_id}/advance-stats`. Empty = disable |
 | `SUPER_ADMIN_KEY` | no | `""` | `X-Super-Admin-Key` sent with each advance-stats POST. Empty = disable callback |
 | `CALLBACK_RETRIES` | no | `3` | Max delivery attempts per outbox row before it is marked `failed` |
@@ -64,22 +69,23 @@ Upload a 60-second clip for processing. Returns immediately (~1–2 s); processi
 |---|---|---|---|
 | `file` | binary (mp4) | yes | The clip file. `video/mp4` or `application/octet-stream`. Max `MAX_UPLOAD_GB` GB. |
 | `match_id` | string | yes | Unique match identifier. Auto-creates the match row on first clip. |
-| `clip_duration_seconds` | number | yes | Duration supplied by the client for this clip, stored directly in SQL. |
-| `half` | integer | yes | Match half (>= 1). |
-| `minute` | integer | yes | Minute within the half (>= 1). |
-| `team0_colour` | string | **yes** | Jersey colour for team 0 — hex (`"#FF6600"` / `"FF6600"`) or CSS name (`"orange"`). Used for cluster-to-team mapping. |
-| `team1_colour` | string | **yes** | Jersey colour for team 1. |
-| `team0_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 0, same format. Used for direct colour-match GK classification (`modules/detectors/goalkeeper_detector.py`) — no fit step. |
-| `team1_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 1. |
-| `team0_name` | string | no | Display name for team 0 (e.g. `"FCA"`). Used in callback payload keys. |
-| `team1_name` | string | no | Display name for team 1 (e.g. `"Rovers"`). |
-| `ruleset` | string | no | `"futsal"` (default) or `"classic"` — selects the sport-tuning profile (`rulesets/`). Only used on the **first** request for a `match_id` (creates the match row); later requests ignore it — a match's ruleset is fixed for its lifetime. Unknown value ⇒ `422`. |
+| `clip_duration_seconds` | number | yes | Duration supplied by the client for this clip, stored directly in SQL. Must be `> 0`; no other constraint — clips are not required to be exactly 60s. ~60 s is nonetheless recommended: the worker's 90 s queue-visibility lease and the 1-clip-per-minute SQL mapping make longer clips risky, and longer clips do **not** improve detection (tracker state already persists across clips). See [service/README.md](codebase/service/README.md) "Why clips stay ~60 s". |
+| `half` | integer | no | Match half (>= 1 if given). Defaults to `1` when omitted. |
+| `minute` | integer | no | Minute within the half (>= 1 if given). When omitted, the server auto-assigns the next sequential minute for `(match_id, half)` via `db.claim_next_minute()`. |
+| `team_a_name` | string | **yes** | Display name for team A (CV cluster id 0), e.g. `"FCA"`. Stored in `matches`; does not change the callback body keys. |
+| `team_b_name` | string | **yes** | Display name for team B (CV cluster id 1), e.g. `"Rovers"`. |
+| `team_a_colour` | string | **yes** | Outfield jersey colour for team A — hex (`"#FF6600"` / `"FF6600"`) or CSS name (`"orange"`). Drives cluster-to-team mapping. |
+| `team_b_colour` | string | **yes** | Outfield jersey colour for team B. |
+| `team_a_gk_colour` | string | **yes** | Goalkeeper jersey colour for team A, same format. Drives direct colour-match GK classification (`modules/detectors/goalkeeper_detector.py`); `session.ensure_gk_ready()` builds the GK detector from clip 1. A malformed colour disables GK classification for that match but never fails the clip. |
+| `team_b_gk_colour` | string | **yes** | Goalkeeper jersey colour for team B. |
+| `ruleset` | string | no | `"classic"` (default) or `"futsal"` — selects the sport-tuning profile (`rulesets/`). Only used on the **first** request for a `match_id` (creates the match row); later requests ignore it — a match's ruleset is fixed for its lifetime. Unknown value ⇒ `422`. Omit the field (or send `classic`) to get classic; senders that still pass `ruleset=futsal` explicitly keep getting futsal. |
 
-All four colour fields (`team0_colour`, `team1_colour`, `team0_gk_colour`,
-`team1_gk_colour`) are required on **every** request, not just the first clip. Team
-name/colour fields on the first clip initialise the match; subsequent clips only fill in
-name values that are still `NULL` (later calls cannot overwrite, and cannot change the
-ruleset). The server stores `clip_duration_seconds` exactly as sent by the client.
+> **v6 field rename + required fields:** the inbound form fields were `team0_*` / `team1_*` before v6 and are now `team_a_*` / `team_b_*` (convention: CV cluster id 0 → team_a, 1 → team_b). Hard cutover — the old names are no longer accepted. **All six `team_*` fields (names, outfield colours, GK colours) are now required** — a missing *or blank* one is a `422`. The **outbound** advance-stats callback body is unchanged (still `frames_a` / `frames_b` / …).
+
+All six `team_*` fields are required on **every** request, not just the first clip. The
+first request's values initialise the `matches` row; on later requests they are still
+required but ignored (`db.ensure_match` only fills `NULL`s and never overwrites, and cannot
+change the `ruleset`). The server stores `clip_duration_seconds` exactly as sent by the client.
 
 **202 Accepted — new clip enqueued:**
 
@@ -110,7 +116,7 @@ ruleset). The server stores `clip_duration_seconds` exactly as sent by the clien
 |---|---|
 | 413 | File exceeds `MAX_UPLOAD_GB` |
 | 415 | Unsupported content type |
-| 422 | `half` or `minute` < 1, or unknown `ruleset` |
+| 422 | a required `team_*` field missing or blank, `half`/`minute` given but < 1, `clip_duration_seconds` <= 0, or unknown `ruleset` |
 
 ---
 
@@ -124,13 +130,15 @@ Upload a whole-match video for post-match analysis. The API returns `200` as soo
 |---|---|---|---|
 | `file` | binary (mp4) | yes | Whole-match video. `video/mp4` or `application/octet-stream`. Max `MAX_UPLOAD_GB` GB. |
 | `match_id` | string | yes | Unique match identifier. Used as the SQL primary key in `post_processing`. |
-| `team0_colour` | string | **yes** | Jersey colour for team 0. |
-| `team1_colour` | string | **yes** | Jersey colour for team 1. |
-| `team0_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 0. |
-| `team1_gk_colour` | string | **yes** | Goalkeeper jersey colour for team 1. |
-| `team0_name` | string | no | Display name for team 0. Stored in `matches` and `post_processing`. |
-| `team1_name` | string | no | Display name for team 1. |
-| `ruleset` | string | no | `"futsal"` (default) or `"classic"`. Same semantics as on `POST /api/clips` — first-request-wins, unknown value ⇒ `422`. |
+| `team_a_name` | string | **yes** | Display name for team A (CV cluster id 0). Stored in `matches` and `post_processing`. |
+| `team_b_name` | string | **yes** | Display name for team B (CV cluster id 1). |
+| `team_a_colour` | string | **yes** | Outfield jersey colour for team A. |
+| `team_b_colour` | string | **yes** | Outfield jersey colour for team B. |
+| `team_a_gk_colour` | string | **yes** | Goalkeeper jersey colour for team A. Same format / semantics as on `POST /api/clips` above. |
+| `team_b_gk_colour` | string | **yes** | Goalkeeper jersey colour for team B. |
+| `ruleset` | string | no | `"classic"` (default) or `"futsal"`. Same semantics as on `POST /api/clips` — first-request-wins, unknown value ⇒ `422`. |
+
+All six `team_*` fields are required (missing or blank ⇒ `422`), same as `POST /api/clips`.
 
 The server uploads the file to blob storage at `clips/<match_id>/post_processing.mp4`,
 enqueues a background job, and deletes the blob after processing completes — whether it
@@ -254,6 +262,6 @@ If `CALLBACK_URL` or `SUPER_ADMIN_KEY` is unset, rows stay `pending` in `callbac
 ```
 
 - All counters are **running totals from minute 1 up to and including the current minute** — not deltas for this clip alone. Because each call overwrites, the duel's `advance_stats` always reflects the latest cumulative state.
-- Team mapping is **positional**: team id `0 → a`, team id `1 → b` (the same 0/1 the KMeans team fit assigns). No jersey-name resolution is applied to the body.
+- Team mapping is **positional**: CV cluster id `0 → team_a → a`, cluster id `1 → team_b → b` (the same 0/1 the KMeans team fit assigns). No jersey-name resolution is applied to the body. The wire keys keep their historical `_a` / `_b` suffixes even though the internal/SQL columns are now `team_a` / `team_b` (`service/stats.py::build_payload` does the mapping).
 - A retroactive correction to a prior minute simply produces a fresh cumulative body on the next POST, which overwrites with the corrected totals.
 - Possession percentage is derived by the receiver: `frames_a / (frames_a + frames_b + frames_loose)`.

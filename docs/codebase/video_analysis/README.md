@@ -48,8 +48,8 @@ Imported by both `video_analysis/run.py` and the production service
 | `CarrierState` | Per-frame "who has the ball": `kind ∈ {carrier, loose, oof}` (+ track/team/player). |
 | `CarrierEngine` | Computes the carrier from ball position + player **foot zones**, with an N-frame **hysteresis** buffer to debounce one-frame ID flickers. `hysteresis_n`/`foot_zone_ratio`/`foot_zone_min_px`/`foot_zone_max_px` are now constructor params (`RulesetConfig` fields), defaults unchanged. |
 | `PassEventTracker` | The **pass FSM** (idle → in_possession → candidate_release → travel → candidate_reception). Emits `completed` / `interception` / `ball_lost` events and per-frame possession labels, plus retroactive **adjustments**. `release_sustain`/`reception_settle`/`travel_min_gap`/`travel_timeout` are now constructor params (`RulesetConfig` fields), defaults unchanged. |
-| `PossessionStats` | Counts frames per label and computes possession % over the strict denominator (team0+team1 only). Applies adjustments (`flip_to` / `drop`). Used only by `run.py`'s printed summary — the service reimplements equivalent counting independently in `service/stats.py::MinuteCounters`. |
-| Constants | `POSSESS_TEAM0/TEAM1/LOOSE/OOF`, `EVT_COMPLETED/INTERCEPTION/BALL_LOST` (`labels.py`), `PHASE_*` (`pass_event_tracker.py`). **Mirrored** (as strings) in `service/stats.py`; `service/session.py` asserts they match. |
+| `PossessionStats` | Counts frames per label and computes possession % over the strict denominator (team_a+team_b only). Applies adjustments (`flip_to` / `drop`). Used only by `run.py`'s printed summary — the service reimplements equivalent counting independently in `service/stats.py::MinuteCounters`. |
+| Constants | `POSSESS_TEAM_A/TEAM_B/LOOSE/OOF`, `EVT_COMPLETED/INTERCEPTION/BALL_LOST` (`labels.py`), `PHASE_*` (`pass_event_tracker.py`). **Mirrored** (as strings) in `service/stats.py`; `service/session.py` asserts they match. |
 
 ### How the carrier is decided (`CarrierEngine`)
 - Foot zone radius = `foot_zone_ratio × bbox_height`, clamped to `[foot_zone_min_px,
@@ -96,8 +96,8 @@ Imported by both `video_analysis/run.py` and the production service
 
 ### What it does
 - `python video_analysis/run.py [--ruleset futsal|classic] [--video ...] [--out ...]
-  [--team0-gk-colour ...] [--team1-gk-colour ...]`.
-- Resolves the `RulesetConfig` (`rulesets.get_ruleset(args.ruleset)`, default `futsal`),
+  [--team-a-gk-colour ...] [--team-b-gk-colour ...]`.
+- Resolves the `RulesetConfig` (`rulesets.get_ruleset(args.ruleset)`, default `classic`),
   builds `PlayerDetector`/`GSFATeamClassifier` from it, and — only if both GK colour
   flags are supplied — a `GoalkeeperDetector` (no fit step; skipped entirely otherwise).
 - Fits the team classifier (cached), then loops frames up to `PROCESS_DURATION_SEC`

@@ -38,7 +38,7 @@ def conn():
 @pytest.fixture
 def match_id(conn):
     mid = f"test_{uuid.uuid4().hex[:12]}"
-    db.ensure_match(conn, mid, team0_name="A", team1_name="B")
+    db.ensure_match(conn, mid, team_a_name="A", team_b_name="B")
     yield mid
     cur = conn.cursor()
     for table in ("callback_outbox", "events", "minute_stats", "matches"):
@@ -51,7 +51,7 @@ def _row(mid, half, minute, **over):
 
 
 def test_upsert_idempotency(conn, match_id):
-    row = _row(match_id, 1, 1, frames_team0=100, frames_team1=50)
+    row = _row(match_id, 1, 1, frames_team_a=100, frames_team_b=50)
     db.write_clip_result(conn, row, None, [])
     db.write_clip_result(conn, row, None, [])     # replay
     cur = conn.cursor()
@@ -60,15 +60,15 @@ def test_upsert_idempotency(conn, match_id):
 
 
 def test_correction_bumps_revision_and_cumulative_is_correct(conn, match_id):
-    db.write_clip_result(conn, _row(match_id, 1, 1, frames_team0=100, frames_team1=50), None, [])
+    db.write_clip_result(conn, _row(match_id, 1, 1, frames_team_a=100, frames_team_b=50), None, [])
     correction = PriorCorrection(half=1, minute=1, kind="flip_to", team_id=1, frames=10)
     payload = db.write_clip_result(
-        conn, _row(match_id, 1, 2, frames_team0=80, frames_team1=70), correction, [],
+        conn, _row(match_id, 1, 2, frames_team_a=80, frames_team_b=70), correction, [],
     )
 
     cur = conn.cursor()
     cur.execute(
-        "SELECT frames_team0, frames_team1, revision FROM minute_stats "
+        "SELECT frames_team_a, frames_team_b, revision FROM minute_stats "
         "WHERE match_id = ? AND half = 1 AND minute = 1", match_id,
     )
     t0, t1, rev = cur.fetchone()
@@ -76,8 +76,8 @@ def test_correction_bumps_revision_and_cumulative_is_correct(conn, match_id):
 
     # Cumulative payload reflects the corrected minute 1: t0=170, t1=130
     sums = db.cumulative_read(conn, match_id, 1, 2)
-    assert sums["frames_team0"] == 170
-    assert sums["frames_team1"] == 130
+    assert sums["frames_team_a"] == 170
+    assert sums["frames_team_b"] == 130
     # Flat advance-stats body: team 0 → a, team 1 → b.
     assert payload["frames_a"] == 170
     assert payload["frames_b"] == 130
@@ -88,7 +88,7 @@ def test_events_and_outbox_written(conn, match_id):
                        from_team=0, to_team=0, from_track=3, to_track=7, travel_frames=5)]
     db.write_clip_result(
         conn,
-        _row(match_id, 1, 1, passes_completed_t0=1, clip_duration_seconds=60.0),
+        _row(match_id, 1, 1, passes_completed_team_a=1, clip_duration_seconds=60.0),
         None,
         events,
     )
@@ -120,28 +120,28 @@ def test_clip_duration_seconds_is_persisted(conn, match_id):
 def test_post_processing_upsert(conn, match_id):
     row = _row(
         match_id, 1, 1,
-        frames_team0=120, frames_team1=80,
+        frames_team_a=120, frames_team_b=80,
         frames_loose=12, frames_oof=3,
-        passes_completed_t0=4, passes_completed_t1=5,
-        interceptions_t0=1, interceptions_t1=2,
-        ball_lost_t0=7, ball_lost_t1=8,
+        passes_completed_team_a=4, passes_completed_team_b=5,
+        interceptions_team_a=1, interceptions_team_b=2,
+        ball_lost_team_a=7, ball_lost_team_b=8,
     )
     db.write_post_processing_result(
         conn,
         row,
-        team0_name="A",
-        team1_name="B",
-        team0_colour="#FF6600",
-        team1_colour="#0033FF",
+        team_a_name="A",
+        team_b_name="B",
+        team_a_colour="#FF6600",
+        team_b_colour="#0033FF",
         video_blob_path="clips/test/post_processing.mp4",
     )
     db.write_post_processing_result(
         conn,
         row,
-        team0_name="A",
-        team1_name="B",
-        team0_colour="#FF6600",
-        team1_colour="#0033FF",
+        team_a_name="A",
+        team_b_name="B",
+        team_a_colour="#FF6600",
+        team_b_colour="#0033FF",
         video_blob_path="clips/test/post_processing.mp4",
     )
 

@@ -36,8 +36,9 @@ one CSV per match with three row types:
 - `match_total` — a single summary row for the whole match.
 
 It does **not** compute possession %, pass accuracy, or pass density itself — the module
-docstring gives the exact formulas (`frames_team0 / (frames_team0+frames_team1+frames_loose)`
-etc.) for the consuming analytics tool to derive. Config (`SQL_CONN_STR` or the individual
+docstring gives the exact formulas (`frames_team_a / (frames_team_a+frames_team_b+frames_loose)`
+etc.) for the consuming analytics tool to derive. CSV header columns are `team_a`/`team_b`
+(and `passes_completed_team_a` …) since v6 — downstream consumers of the export must update. Config (`SQL_CONN_STR` or the individual
 `GSFA_SQL_*` env vars, `GSFA_EXPORT_DIR`) is read from env vars with an editable `CONFIG`
 dict fallback. Usage: no args = export all matches in the DB; positional args or
 `GSFA_MATCH_IDS` (comma-separated) = export specific match IDs (CLI args win). Depends on
@@ -49,9 +50,11 @@ will have it `NULL`.
 PowerShell ops script: takes one local video file, uses `ffprobe`/`ffmpeg` to slice it
 into sequential 60 s clips (re-encoded `mpeg4`/`aac`, faststart), and `curl.exe`-POSTs each
 clip to `POST /api/clips` in order (`half`, incrementing `minute`, `clip_duration_seconds`
-computed per clip, plus the four team name/colour params). Parameterised via
-`-InputVideoPath`/`-ServerUrl`/`-MatchId`/`-Half`/`-Team0Name`/etc.; defaults in the file
-are placeholder values for one specific match upload, not a template to run as-is.
+computed per clip, plus the four `team_a_*`/`team_b_*` name/colour params and `ruleset`,
+default `classic`). Parameterised via
+`-InputVideoPath`/`-ServerUrl`/`-MatchId`/`-Half`/`-TeamAName`/`-TeamBName`/`-TeamAColour`/`-TeamBColour`/`-Ruleset`;
+defaults in the file are placeholder values for one specific match upload, not a template
+to run as-is.
 
 ## Tracker research scripts (`scripts/colab_*`, `scripts/*mcbyte*`)
 

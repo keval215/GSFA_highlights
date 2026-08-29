@@ -73,10 +73,10 @@ The dividing line is important:
 (`video_analysis/possession.py`, the old monolithic module, was deleted — its reusable
 classes moved to `modules/possession/*.py` and its `run()` became this file.)
 
-1. Resolve the `RulesetConfig` (`rulesets.get_ruleset(args.ruleset)`, default `futsal`).
+1. Resolve the `RulesetConfig` (`rulesets.get_ruleset(args.ruleset)`, default `classic`).
 2. Build `PlayerDetector` (unified YOLOv11m, ruleset weights/conf), `GSFATeamClassifier`
    (ruleset crop/blur tuning). `GoalkeeperDetector` is only constructed if both
-   `--team0-gk-colour`/`--team1-gk-colour` are supplied (direct colour match, no fit step).
+   `--team-a-gk-colour`/`--team-b-gk-colour` are supplied (direct colour match, no fit step).
 3. `team_clf.fit_from_video_or_load(...)` — fit SigLIP+UMAP+KMeans once (cached pkl).
 4. Loop frames up to `PROCESS_DURATION_SEC` (default 480 s):
    detect → classify → GK (if enabled) → track → ball Kalman → carrier → pass FSM → stats
@@ -97,11 +97,12 @@ Mode A **renders** video. It is the reference implementation / debugging harness
 Two processes from one Docker image:
 
 ### API process (`service/api.py`, no GPU)
-- `POST /api/clips` accepts a 60 s mp4 + `match_id` + team/GK colours (+ half/minute/team
+- `POST /api/clips` accepts a clip mp4 (≈60 s by convention — not enforced; see
+  [service/README.md](service/README.md) "Why clips stay ~60 s") + `match_id` + team/GK colours (+ half/minute/team
   name/`ruleset` metadata).
 - Uploads the clip to Azure Blob, enqueues an Azure Queue message, returns `202`.
 - Never processes inline. Also serves `GET /health` and `GET /metrics`.
-- `ruleset` (`"futsal"` | `"classic"`, default `"futsal"`) is validated against the
+- `ruleset` (`"futsal"` | `"classic"`, default `"classic"`) is validated against the
   `rulesets` registry (unknown value → `422`) and only takes effect on the **first**
   request for a `match_id` — it creates the `matches` row; a match's ruleset is fixed for
   its lifetime and later requests for the same `match_id` ignore the field.
@@ -205,7 +206,7 @@ modules/detectors/cache.py → pkl path helper used by both team_classifier + go
 
 ### Critical contract: the constant-string mirror
 
-`service/stats.py` re-declares the possession labels (`team0/team1/loose/oof`) and event
+`service/stats.py` re-declares the possession labels (`team_a/team_b/loose/oof`) and event
 kinds (`completed/interception/ball_lost`) as plain strings so the counting logic stays
 torch-free and unit-testable. `service/session.py` **asserts at import** that these match
 `modules.possession.labels`'s constants. If you rename a constant in `labels.py`,
@@ -233,15 +234,16 @@ zone" centroids, and assign each zone to whichever team's outfield centroid was 
 Per frame it re-derived "nearest player to each post" and overrode that player's team.
 
 It is now **fit-free**: the caller supplies two reference jersey colours
-(`team0_gk_colour`, `team1_gk_colour`, same hex/CSS-name format as outfield team
+(`team_a_gk_colour`, `team_b_gk_colour`, same hex/CSS-name format as outfield team
 colours), and `classify(frame, detections)` finds, independently for each colour, the
 single player in the frame whose jersey colour is closest to it (reusing
 `GSFATeamClassifier`'s HSV colour-vector helpers) — a match under `max_gk_colour_dist`
 marks that player `is_goalkeeper=True`. No goal-post dependency, no tracking, no cache
 pkl, and no ordering requirement relative to `GSFATeamClassifier` (see the diagram in
-§1). In the service, `team0_gk_colour`/`team1_gk_colour` are now required fields on both
+§1). In the service, `team_a_gk_colour`/`team_b_gk_colour` are **required** fields on both
 upload endpoints (see [docs/API.md](../API.md)); `MatchSession.ensure_gk_ready()`
-constructs the detector lazily once the DB has both colours.
+constructs the detector from clip 1 (a malformed colour disables GK for that match but
+never fails the clip).
 
 ---
 

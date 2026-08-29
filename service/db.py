@@ -49,42 +49,43 @@ def get_conn() -> pyodbc.Connection:
 def ensure_match(
     conn: pyodbc.Connection,
     match_id: str,
-    team0_name: Optional[str] = None,
-    team1_name: Optional[str] = None,
-    team0_colour: Optional[str] = None,
-    team1_colour: Optional[str] = None,
-    team0_gk_colour: Optional[str] = None,
-    team1_gk_colour: Optional[str] = None,
-    ruleset: str = "futsal",
+    team_a_name: Optional[str] = None,
+    team_b_name: Optional[str] = None,
+    team_a_colour: Optional[str] = None,
+    team_b_colour: Optional[str] = None,
+    team_a_gk_colour: Optional[str] = None,
+    team_b_gk_colour: Optional[str] = None,
+    ruleset: str = "classic",
 ) -> None:
     """First clip auto-creates the match; later calls only fill in missing
     metadata. `ruleset` is only used on creation — it is fixed for the life
     of the match (team fit, tracker, and pass-FSM state all assume one
-    ruleset), so later calls never change it. Commits."""
+    ruleset), so later calls never change it. team_a = CV cluster id 0,
+    team_b = cluster id 1. Commits."""
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM matches WHERE match_id = ?", match_id)
     if cur.fetchone() is None:
         cur.execute(
             "INSERT INTO matches "
-            "  (match_id, team0_name, team1_name, team0_colour, team1_colour, "
-            "   team0_gk_colour, team1_gk_colour, ruleset) "
+            "  (match_id, team_a_name, team_b_name, team_a_colour, team_b_colour, "
+            "   team_a_gk_colour, team_b_gk_colour, ruleset) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            match_id, team0_name, team1_name, team0_colour, team1_colour,
-            team0_gk_colour, team1_gk_colour, ruleset,
+            match_id, team_a_name, team_b_name, team_a_colour, team_b_colour,
+            team_a_gk_colour, team_b_gk_colour, ruleset,
         )
     else:
         cur.execute(
             "UPDATE matches SET "
-            "  team0_name      = COALESCE(team0_name, ?), "
-            "  team1_name      = COALESCE(team1_name, ?), "
-            "  team0_colour    = COALESCE(team0_colour, ?), "
-            "  team1_colour    = COALESCE(team1_colour, ?), "
-            "  team0_gk_colour = COALESCE(team0_gk_colour, ?), "
-            "  team1_gk_colour = COALESCE(team1_gk_colour, ?), "
+            "  team_a_name      = COALESCE(team_a_name, ?), "
+            "  team_b_name      = COALESCE(team_b_name, ?), "
+            "  team_a_colour    = COALESCE(team_a_colour, ?), "
+            "  team_b_colour    = COALESCE(team_b_colour, ?), "
+            "  team_a_gk_colour = COALESCE(team_a_gk_colour, ?), "
+            "  team_b_gk_colour = COALESCE(team_b_gk_colour, ?), "
             "  updated_at = SYSUTCDATETIME() "
             "WHERE match_id = ?",
-            team0_name, team1_name, team0_colour, team1_colour,
-            team0_gk_colour, team1_gk_colour, match_id,
+            team_a_name, team_b_name, team_a_colour, team_b_colour,
+            team_a_gk_colour, team_b_gk_colour, match_id,
         )
     conn.commit()
 
@@ -92,12 +93,12 @@ def ensure_match(
 def get_team_specs(
     conn: pyodbc.Connection, match_id: str,
 ) -> Optional[list[tuple[str, str]]]:
-    """[(team0_name, team0_colour), (team1_name, team1_colour)] for colour→name
+    """[(team_a_name, team_a_colour), (team_b_name, team_b_colour)] for colour→name
     resolution, or None unless BOTH teams have a name AND a colour. Cluster
     matching needs all four values, so a partial set is treated as 'not set'."""
     cur = conn.cursor()
     cur.execute(
-        "SELECT team0_name, team0_colour, team1_name, team1_colour "
+        "SELECT team_a_name, team_a_colour, team_b_name, team_b_colour "
         "FROM matches WHERE match_id = ?",
         match_id,
     )
@@ -110,12 +111,12 @@ def get_team_specs(
 def get_gk_colours(
     conn: pyodbc.Connection, match_id: str,
 ) -> Optional[tuple[str, str]]:
-    """(team0_gk_colour, team1_gk_colour) for goalkeeper colour-matching, or
-    None unless BOTH are set. Independent of team0_name/team1_name — GK
+    """(team_a_gk_colour, team_b_gk_colour) for goalkeeper colour-matching, or
+    None unless BOTH are set. Independent of team_a_name/team_b_name — GK
     classification only needs the two reference colours, not display names."""
     cur = conn.cursor()
     cur.execute(
-        "SELECT team0_gk_colour, team1_gk_colour FROM matches WHERE match_id = ?",
+        "SELECT team_a_gk_colour, team_b_gk_colour FROM matches WHERE match_id = ?",
         match_id,
     )
     row = cur.fetchone()
@@ -138,12 +139,12 @@ def get_match_progress(conn: pyodbc.Connection, match_id: str) -> Optional[tuple
 
 def get_match_ruleset(conn: pyodbc.Connection, match_id: str) -> str:
     """The ruleset ('futsal' | 'classic') this match was created with.
-    Defaults to 'futsal' if the match row is somehow missing (should not
+    Defaults to 'classic' if the match row is somehow missing (should not
     happen — callers ensure_match() before reaching this point)."""
     cur = conn.cursor()
     cur.execute("SELECT ruleset FROM matches WHERE match_id = ?", match_id)
     row = cur.fetchone()
-    return str(row[0]) if row and row[0] else "futsal"
+    return str(row[0]) if row and row[0] else "classic"
 
 
 def claim_next_minute(conn: pyodbc.Connection, match_id: str, half: int) -> int:
@@ -190,10 +191,10 @@ def post_processing_exists(conn: pyodbc.Connection, match_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 _SUM_COLS = (
-    "frames_team0", "frames_team1", "frames_loose", "frames_oof",
-    "passes_completed_t0", "passes_completed_t1",
-    "interceptions_t0", "interceptions_t1",
-    "ball_lost_t0", "ball_lost_t1",
+    "frames_team_a", "frames_team_b", "frames_loose", "frames_oof",
+    "passes_completed_team_a", "passes_completed_team_b",
+    "interceptions_team_a", "interceptions_team_b",
+    "ball_lost_team_a", "ball_lost_team_b",
 )
 
 
@@ -247,17 +248,17 @@ def write_clip_result(
             cur.execute(
                 "INSERT INTO minute_stats (match_id, half, minute, "
                 "  clip_duration_seconds, "
-                "  frames_team0, frames_team1, frames_loose, frames_oof, "
-                "  passes_completed_t0, passes_completed_t1, "
-                "  interceptions_t0, interceptions_t1, "
-                "  ball_lost_t0, ball_lost_t1, revision, clip_blob_path) "
+                "  frames_team_a, frames_team_b, frames_loose, frames_oof, "
+                "  passes_completed_team_a, passes_completed_team_b, "
+                "  interceptions_team_a, interceptions_team_b, "
+                "  ball_lost_team_a, ball_lost_team_b, revision, clip_blob_path) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                 row.match_id, row.half, row.minute,
                 row.clip_duration_seconds,
-                row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
-                row.passes_completed_t0, row.passes_completed_t1,
-                row.interceptions_t0, row.interceptions_t1,
-                row.ball_lost_t0, row.ball_lost_t1,
+                row.frames_team_a, row.frames_team_b, row.frames_loose, row.frames_oof,
+                row.passes_completed_team_a, row.passes_completed_team_b,
+                row.interceptions_team_a, row.interceptions_team_b,
+                row.ball_lost_team_a, row.ball_lost_team_b,
                 row.clip_blob_path,
             )
         else:
@@ -265,17 +266,17 @@ def write_clip_result(
             cur.execute(
                 "UPDATE minute_stats SET "
                 "  clip_duration_seconds = ?, "
-                "  frames_team0 = ?, frames_team1 = ?, frames_loose = ?, frames_oof = ?, "
-                "  passes_completed_t0 = ?, passes_completed_t1 = ?, "
-                "  interceptions_t0 = ?, interceptions_t1 = ?, "
-                "  ball_lost_t0 = ?, ball_lost_t1 = ?, "
+                "  frames_team_a = ?, frames_team_b = ?, frames_loose = ?, frames_oof = ?, "
+                "  passes_completed_team_a = ?, passes_completed_team_b = ?, "
+                "  interceptions_team_a = ?, interceptions_team_b = ?, "
+                "  ball_lost_team_a = ?, ball_lost_team_b = ?, "
                 "  clip_blob_path = ?, processed_at = SYSUTCDATETIME() "
                 "WHERE match_id = ? AND half = ? AND minute = ?",
                 row.clip_duration_seconds,
-                row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
-                row.passes_completed_t0, row.passes_completed_t1,
-                row.interceptions_t0, row.interceptions_t1,
-                row.ball_lost_t0, row.ball_lost_t1,
+                row.frames_team_a, row.frames_team_b, row.frames_loose, row.frames_oof,
+                row.passes_completed_team_a, row.passes_completed_team_b,
+                row.interceptions_team_a, row.interceptions_team_b,
+                row.ball_lost_team_a, row.ball_lost_team_b,
                 row.clip_blob_path,
                 row.match_id, row.half, row.minute,
             )
@@ -317,15 +318,17 @@ def write_clip_result(
 def write_post_processing_result(
     conn: pyodbc.Connection,
     row: MinuteRow,
-    team0_name: Optional[str] = None,
-    team1_name: Optional[str] = None,
-    team0_colour: Optional[str] = None,
-    team1_colour: Optional[str] = None,
-    team0_gk_colour: Optional[str] = None,
-    team1_gk_colour: Optional[str] = None,
+    team_a_name: Optional[str] = None,
+    team_b_name: Optional[str] = None,
+    team_a_colour: Optional[str] = None,
+    team_b_colour: Optional[str] = None,
+    team_a_gk_colour: Optional[str] = None,
+    team_b_gk_colour: Optional[str] = None,
     video_blob_path: Optional[str] = None,
 ) -> dict:
-    """Upsert the whole-match aggregate row into post_processing."""
+    """Upsert the whole-match aggregate row into post_processing.
+    team_a = CV cluster id 0, team_b = cluster id 1. The returned dict is the
+    HTTP response body of POST /api/post-processing."""
     cur = conn.cursor()
     blob_path = video_blob_path or row.clip_blob_path
     cur.execute(
@@ -336,56 +339,56 @@ def write_post_processing_result(
     if exists:
         cur.execute(
             "UPDATE post_processing SET "
-            "  team0_name = ?, team1_name = ?, team0_colour = ?, team1_colour = ?, "
-            "  team0_gk_colour = ?, team1_gk_colour = ?, "
-            "  frames_team0 = ?, frames_team1 = ?, frames_loose = ?, frames_oof = ?, "
-            "  passes_completed_t0 = ?, passes_completed_t1 = ?, "
-            "  interceptions_t0 = ?, interceptions_t1 = ?, "
-            "  ball_lost_t0 = ?, ball_lost_t1 = ?, video_blob_path = ?, "
+            "  team_a_name = ?, team_b_name = ?, team_a_colour = ?, team_b_colour = ?, "
+            "  team_a_gk_colour = ?, team_b_gk_colour = ?, "
+            "  frames_team_a = ?, frames_team_b = ?, frames_loose = ?, frames_oof = ?, "
+            "  passes_completed_team_a = ?, passes_completed_team_b = ?, "
+            "  interceptions_team_a = ?, interceptions_team_b = ?, "
+            "  ball_lost_team_a = ?, ball_lost_team_b = ?, video_blob_path = ?, "
             "  processed_at = SYSUTCDATETIME() "
             "WHERE match_id = ?",
-            team0_name, team1_name, team0_colour, team1_colour,
-            team0_gk_colour, team1_gk_colour,
-            row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
-            row.passes_completed_t0, row.passes_completed_t1,
-            row.interceptions_t0, row.interceptions_t1,
-            row.ball_lost_t0, row.ball_lost_t1, blob_path,
+            team_a_name, team_b_name, team_a_colour, team_b_colour,
+            team_a_gk_colour, team_b_gk_colour,
+            row.frames_team_a, row.frames_team_b, row.frames_loose, row.frames_oof,
+            row.passes_completed_team_a, row.passes_completed_team_b,
+            row.interceptions_team_a, row.interceptions_team_b,
+            row.ball_lost_team_a, row.ball_lost_team_b, blob_path,
             row.match_id,
         )
     else:
         cur.execute(
-            "INSERT INTO post_processing (match_id, team0_name, team1_name, team0_colour, team1_colour, "
-            "  team0_gk_colour, team1_gk_colour, "
-            "  frames_team0, frames_team1, frames_loose, frames_oof, "
-            "  passes_completed_t0, passes_completed_t1, interceptions_t0, interceptions_t1, "
-            "  ball_lost_t0, ball_lost_t1, video_blob_path) "
+            "INSERT INTO post_processing (match_id, team_a_name, team_b_name, team_a_colour, team_b_colour, "
+            "  team_a_gk_colour, team_b_gk_colour, "
+            "  frames_team_a, frames_team_b, frames_loose, frames_oof, "
+            "  passes_completed_team_a, passes_completed_team_b, interceptions_team_a, interceptions_team_b, "
+            "  ball_lost_team_a, ball_lost_team_b, video_blob_path) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            row.match_id, team0_name, team1_name, team0_colour, team1_colour,
-            team0_gk_colour, team1_gk_colour,
-            row.frames_team0, row.frames_team1, row.frames_loose, row.frames_oof,
-            row.passes_completed_t0, row.passes_completed_t1,
-            row.interceptions_t0, row.interceptions_t1,
-            row.ball_lost_t0, row.ball_lost_t1, blob_path,
+            row.match_id, team_a_name, team_b_name, team_a_colour, team_b_colour,
+            team_a_gk_colour, team_b_gk_colour,
+            row.frames_team_a, row.frames_team_b, row.frames_loose, row.frames_oof,
+            row.passes_completed_team_a, row.passes_completed_team_b,
+            row.interceptions_team_a, row.interceptions_team_b,
+            row.ball_lost_team_a, row.ball_lost_team_b, blob_path,
         )
     conn.commit()
     return {
         "match_id": row.match_id,
-        "team0_name": team0_name,
-        "team1_name": team1_name,
-        "team0_colour": team0_colour,
-        "team1_colour": team1_colour,
-        "team0_gk_colour": team0_gk_colour,
-        "team1_gk_colour": team1_gk_colour,
-        "frames_team0": row.frames_team0,
-        "frames_team1": row.frames_team1,
+        "team_a_name": team_a_name,
+        "team_b_name": team_b_name,
+        "team_a_colour": team_a_colour,
+        "team_b_colour": team_b_colour,
+        "team_a_gk_colour": team_a_gk_colour,
+        "team_b_gk_colour": team_b_gk_colour,
+        "frames_team_a": row.frames_team_a,
+        "frames_team_b": row.frames_team_b,
         "frames_loose": row.frames_loose,
         "frames_oof": row.frames_oof,
-        "passes_completed_t0": row.passes_completed_t0,
-        "passes_completed_t1": row.passes_completed_t1,
-        "interceptions_t0": row.interceptions_t0,
-        "interceptions_t1": row.interceptions_t1,
-        "ball_lost_t0": row.ball_lost_t0,
-        "ball_lost_t1": row.ball_lost_t1,
+        "passes_completed_team_a": row.passes_completed_team_a,
+        "passes_completed_team_b": row.passes_completed_team_b,
+        "interceptions_team_a": row.interceptions_team_a,
+        "interceptions_team_b": row.interceptions_team_b,
+        "ball_lost_team_a": row.ball_lost_team_a,
+        "ball_lost_team_b": row.ball_lost_team_b,
         "video_blob_path": blob_path,
     }
 
@@ -395,13 +398,14 @@ def _apply_prior_correction(cur, match_id: str, c: PriorCorrection) -> None:
     flip_to: move frames from the other team's count to c.team_id.
     drop:    move frames from c.team_id's count to frames_oof."""
     cur.execute(
-        "SELECT frames_team0, frames_team1, frames_oof FROM minute_stats "
+        "SELECT frames_team_a, frames_team_b, frames_oof FROM minute_stats "
         "WHERE match_id = ? AND half = ? AND minute = ?",
         match_id, c.half, c.minute,
     )
     prior = cur.fetchone()
     if prior is None:
         return  # prior minute row missing (e.g. logged gap) — nothing to correct
+    # t0/t1 locals: t0 = team_a count, t1 = team_b count (c.team_id 0 → team_a)
     t0, t1, oof = int(prior[0]), int(prior[1]), int(prior[2])
 
     if c.kind == "flip_to":
@@ -422,7 +426,7 @@ def _apply_prior_correction(cur, match_id: str, c: PriorCorrection) -> None:
         return
 
     cur.execute(
-        "UPDATE minute_stats SET frames_team0 = ?, frames_team1 = ?, frames_oof = ?, "
+        "UPDATE minute_stats SET frames_team_a = ?, frames_team_b = ?, frames_oof = ?, "
         "  revision = revision + 1 "
         "WHERE match_id = ? AND half = ? AND minute = ?",
         t0, t1, oof, match_id, c.half, c.minute,

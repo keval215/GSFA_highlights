@@ -9,8 +9,8 @@ and classic (11-a-side) football can have different tuning without editing sourc
 | File | One-line role |
 |---|---|
 | `base.py` | `RulesetConfig` — every sport-tunable CV parameter, in one dataclass |
-| `futsal.py` | `FUTSAL` — today's pre-refactor constants, byte-identical (production default) |
-| `classic.py` | `CLASSIC` — 11-a-side profile, several fields `PLACEHOLDER` (not production-ready) |
+| `futsal.py` | `FUTSAL` — the original pre-refactor constants, byte-identical |
+| `classic.py` | `CLASSIC` — 11-a-side profile; **the default ruleset** (`DEFAULT_RULESET`). Needs `CLASSIC_PLAYER_WEIGHTS` set on the deployment |
 | `registry.py` | `get_ruleset(name)` / `available_rulesets()` / `DEFAULT_RULESET` |
 | `__init__.py` | Re-exports the above |
 
@@ -51,36 +51,41 @@ and classic (11-a-side) football can have different tuning without editing sourc
 
 ## `futsal.py` — `FUTSAL`
 
-Production default (`DEFAULT_RULESET`). Every field is today's exact pre-refactor
-constant — verified byte-identical to the values that used to be hardcoded, so this
-refactor changes **no** futsal behaviour.
+Every field is the original pre-refactor constant — verified byte-identical to the values
+that used to be hardcoded, so this refactor changed **no** futsal behaviour. No longer the
+default (see `classic.py`); still selectable with an explicit `ruleset=futsal` and
+`PLAYER_WEIGHTS` set.
 
 ## `classic.py` — `CLASSIC`
 
-11-a-side football profile. Structurally complete (every `RulesetConfig` field is set)
-but **not production-usable yet**:
-- `player_model_weights` points at a checkpoint that does not exist — there is no
-  classic-trained YOLOv11m model. The service requires the `CLASSIC_PLAYER_WEIGHTS` env
-  var to be set (see `service/config.py::player_weights`) before this ruleset can be
-  selected in production; it is not set anywhere yet.
-- Several numeric fields are explicitly commented `PLACEHOLDER` (crop/blur tuning,
-  `track_buffer_frames_at_30fps`, Kalman coast/gate, foot-zone px bounds,
-  `travel_timeout_frames`) — reasoned starting points based on classic football's wider
-  broadcast framing, longer pitch, and larger roster, not numbers calibrated against real
-  11-a-side footage.
+11-a-side football profile and **the default ruleset** (`DEFAULT_RULESET`). Every
+`RulesetConfig` field is set with a committed value tuned for classic football's wider
+broadcast framing, longer pitch, and larger roster. The values are reasoned starting
+points, not frame-by-frame calibrated numbers — `travel_timeout_frames`, the Kalman
+coast/gate, the crop/blur tuning and the foot-zone px bounds are the fields most likely to
+move once real match telemetry is in (noted inline in the file).
 
-### What it does NOT do
-- Does **not** get exercised by any existing test or production match yet — selecting
-  `ruleset=classic` today will fail fast at model load (`CLASSIC_PLAYER_WEIGHTS` unset)
-  unless that env var and a real checkpoint are provided first.
+Fields that differ from `futsal`: `player_model_weights`, `torso_ratio` (0.65),
+`blur_threshold` (55.0), `min_crop_px` (24), `track_buffer_frames_at_30fps` (90),
+`kalman_coast_frames` (20), `kalman_gate_sigma` (8.0), `foot_zone_min_px` (14),
+`foot_zone_max_px` (100), `travel_timeout_frames` (45). Everything else matches `futsal`.
+
+### Deployment requirement
+- `player_model_weights` in the file is only the local-dev default for
+  `video_analysis/run.py`. The service resolves classic weights from the
+  `CLASSIC_PLAYER_WEIGHTS` env var (`service/config.py::player_weights`). Because classic
+  is now the default, **`CLASSIC_PLAYER_WEIGHTS` must be set to a real classic-trained
+  YOLOv11m checkpoint** on the VM, or the worker fails fast at model load on the first
+  clip of every new match.
 
 ## `registry.py`
 
 - `get_ruleset(name) -> RulesetConfig` — raises `ValueError` (with the valid-name list)
   on an unknown name. `service/api.py` catches this and returns HTTP `422`.
 - `available_rulesets() -> list[str]` — `["classic", "futsal"]`, sorted.
-- `DEFAULT_RULESET = "futsal"` — used as the default form value on both upload endpoints
-  and the default CLI value in `video_analysis/run.py`.
+- `DEFAULT_RULESET = "classic"` — used as the default form value on both upload endpoints
+  and the default CLI value in `video_analysis/run.py`. A caller that omits `ruleset` gets
+  classic; a caller that still sends `ruleset=futsal` explicitly is unaffected.
 
 ### Connections
 - Single validated lookup point shared by `video_analysis/run.py`, `service/api.py`

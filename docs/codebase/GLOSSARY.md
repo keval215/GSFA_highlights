@@ -28,7 +28,8 @@ Domain and codebase terms, in the sense this project uses them.
 | **Provisional credit** | During travel, possession frames are credited to the passer's team optimistically. Corrected later if the pass was actually an interception or a loss. |
 | **Adjustment** | A `(kind, team_id, n)` correction emitted by the pass FSM. `flip_to` = move n frames to the other team; `drop` = reclassify n frames as OOF. |
 | **PriorCorrection** | A service-mode adjustment whose frames started in the *previous* clip/minute — applied as an UPDATE to that prior `minute_stats` row (`revision += 1`). |
-| **Possession denominator** | Only `team0 + team1` frames. `loose` and `oof` are intentionally excluded, so possession % is "of the time the ball was clearly owned". |
+| **Possession denominator** | Only `team_a + team_b` frames. `loose` and `oof` are intentionally excluded, so possession % is "of the time the ball was clearly owned". |
+| **team_a / team_b** | The two teams, keyed by the CV team fit's KMeans cluster id: cluster 0 = `team_a`, cluster 1 = `team_b`. One spelling end-to-end (HTTP fields, SQL columns, internal labels) since v6. The advance-stats callback body keeps the older `_a`/`_b` suffixes on the wire. |
 | **MatchSession** | Service-mode object holding all cross-clip state for one match (tracker, ball Kalman, carrier engine, pass FSM, team fit, carryover). |
 | **minute row** | One `minute_stats` row = one processed 60 s clip = ~one match-minute. Stores **raw** counters only. |
 | **Cumulative-on-read** | Totals are `SUM()`-ed across minute rows at read time, never stored. Percentages derived after summing. |

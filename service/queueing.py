@@ -7,9 +7,9 @@ One message per work item:
          "blob_path": str, "clip_duration_seconds": float}
     post-processing:
         {"kind": "post_processing", "match_id": str, "blob_path": str,
-         "team0_name": str | null, "team1_name": str | null,
-         "team0_colour": str | null, "team1_colour": str | null,
-         "team0_gk_colour": str | null, "team1_gk_colour": str | null}
+         "team_a_name": str | null, "team_b_name": str | null,
+         "team_a_colour": str | null, "team_b_colour": str | null,
+         "team_a_gk_colour": str | null, "team_b_gk_colour": str | null}
 
 Azure Queue Storage is approximately FIFO, so the worker enforces ordering
 itself (see worker.py); this module only provides enqueue/dequeue/poison
@@ -37,12 +37,12 @@ class ClipMessage:
     half:      int = 0
     minute:    int = 0
     clip_duration_seconds: float = 60.0
-    team0_name: Optional[str] = None
-    team1_name: Optional[str] = None
-    team0_colour: Optional[str] = None
-    team1_colour: Optional[str] = None
-    team0_gk_colour: Optional[str] = None
-    team1_gk_colour: Optional[str] = None
+    team_a_name: Optional[str] = None
+    team_b_name: Optional[str] = None
+    team_a_colour: Optional[str] = None
+    team_b_colour: Optional[str] = None
+    team_a_gk_colour: Optional[str] = None
+    team_b_gk_colour: Optional[str] = None
     # How many times the worker deferred this message because it arrived
     # out of order (carried in the message body across re-sends).
     ordering_retries: int = 0
@@ -75,10 +75,10 @@ class ClipQueue:
         blob_path: str,
         clip_duration_seconds: float,
         kind: str = "clip",
-        team0_name: Optional[str] = None,
-        team1_name: Optional[str] = None,
-        team0_colour: Optional[str] = None,
-        team1_colour: Optional[str] = None,
+        team_a_name: Optional[str] = None,
+        team_b_name: Optional[str] = None,
+        team_a_colour: Optional[str] = None,
+        team_b_colour: Optional[str] = None,
     ) -> None:
         body = {
             "kind": kind,
@@ -88,44 +88,44 @@ class ClipQueue:
             "blob_path": blob_path,
             "clip_duration_seconds": clip_duration_seconds,
         }
-        if team0_name is not None:
-            body["team0_name"] = team0_name
-        if team1_name is not None:
-            body["team1_name"] = team1_name
-        if team0_colour is not None:
-            body["team0_colour"] = team0_colour
-        if team1_colour is not None:
-            body["team1_colour"] = team1_colour
+        if team_a_name is not None:
+            body["team_a_name"] = team_a_name
+        if team_b_name is not None:
+            body["team_b_name"] = team_b_name
+        if team_a_colour is not None:
+            body["team_a_colour"] = team_a_colour
+        if team_b_colour is not None:
+            body["team_b_colour"] = team_b_colour
         self._queue.send_message(json.dumps(body))
 
     def enqueue_post_processing(
         self,
         match_id: str,
         blob_path: str,
-        team0_name: Optional[str] = None,
-        team1_name: Optional[str] = None,
-        team0_colour: Optional[str] = None,
-        team1_colour: Optional[str] = None,
-        team0_gk_colour: Optional[str] = None,
-        team1_gk_colour: Optional[str] = None,
+        team_a_name: Optional[str] = None,
+        team_b_name: Optional[str] = None,
+        team_a_colour: Optional[str] = None,
+        team_b_colour: Optional[str] = None,
+        team_a_gk_colour: Optional[str] = None,
+        team_b_gk_colour: Optional[str] = None,
     ) -> None:
         body = {
             "kind": "post_processing",
             "match_id": match_id,
             "blob_path": blob_path,
         }
-        if team0_name is not None:
-            body["team0_name"] = team0_name
-        if team1_name is not None:
-            body["team1_name"] = team1_name
-        if team0_colour is not None:
-            body["team0_colour"] = team0_colour
-        if team1_colour is not None:
-            body["team1_colour"] = team1_colour
-        if team0_gk_colour is not None:
-            body["team0_gk_colour"] = team0_gk_colour
-        if team1_gk_colour is not None:
-            body["team1_gk_colour"] = team1_gk_colour
+        if team_a_name is not None:
+            body["team_a_name"] = team_a_name
+        if team_b_name is not None:
+            body["team_b_name"] = team_b_name
+        if team_a_colour is not None:
+            body["team_a_colour"] = team_a_colour
+        if team_b_colour is not None:
+            body["team_b_colour"] = team_b_colour
+        if team_a_gk_colour is not None:
+            body["team_a_gk_colour"] = team_a_gk_colour
+        if team_b_gk_colour is not None:
+            body["team_b_gk_colour"] = team_b_gk_colour
         self._queue.send_message(json.dumps(body))
 
     # --- consumer (worker) ---
@@ -151,12 +151,12 @@ class ClipQueue:
                 half             = int(body.get("half", 0)),
                 minute           = int(body.get("minute", 0)),
                 clip_duration_seconds = float(body.get("clip_duration_seconds", 60.0)),
-                team0_name       = body.get("team0_name"),
-                team1_name       = body.get("team1_name"),
-                team0_colour     = body.get("team0_colour"),
-                team1_colour     = body.get("team1_colour"),
-                team0_gk_colour  = body.get("team0_gk_colour"),
-                team1_gk_colour  = body.get("team1_gk_colour"),
+                team_a_name       = body.get("team_a_name"),
+                team_b_name       = body.get("team_b_name"),
+                team_a_colour     = body.get("team_a_colour"),
+                team_b_colour     = body.get("team_b_colour"),
+                team_a_gk_colour  = body.get("team_a_gk_colour"),
+                team_b_gk_colour  = body.get("team_b_gk_colour"),
                 ordering_retries = int(body.get("ordering_retries", 0)),
                 message_id       = m.id,
                 pop_receipt      = m.pop_receipt,
@@ -178,12 +178,12 @@ class ClipQueue:
                 "match_id": msg.match_id, "half": msg.half,
                 "minute": msg.minute, "blob_path": msg.blob_path,
                 "clip_duration_seconds": msg.clip_duration_seconds,
-                "team0_name": msg.team0_name,
-                "team1_name": msg.team1_name,
-                "team0_colour": msg.team0_colour,
-                "team1_colour": msg.team1_colour,
-                "team0_gk_colour": msg.team0_gk_colour,
-                "team1_gk_colour": msg.team1_gk_colour,
+                "team_a_name": msg.team_a_name,
+                "team_b_name": msg.team_b_name,
+                "team_a_colour": msg.team_a_colour,
+                "team_b_colour": msg.team_b_colour,
+                "team_a_gk_colour": msg.team_a_gk_colour,
+                "team_b_gk_colour": msg.team_b_gk_colour,
                 "ordering_retries": msg.ordering_retries + 1,
             }),
             visibility_timeout=delay_seconds,
@@ -195,12 +195,12 @@ class ClipQueue:
             "match_id": msg.match_id, "half": msg.half,
             "minute": msg.minute, "blob_path": msg.blob_path,
             "clip_duration_seconds": msg.clip_duration_seconds,
-            "team0_name": msg.team0_name,
-            "team1_name": msg.team1_name,
-            "team0_colour": msg.team0_colour,
-            "team1_colour": msg.team1_colour,
-            "team0_gk_colour": msg.team0_gk_colour,
-            "team1_gk_colour": msg.team1_gk_colour,
+            "team_a_name": msg.team_a_name,
+            "team_b_name": msg.team_b_name,
+            "team_a_colour": msg.team_a_colour,
+            "team_b_colour": msg.team_b_colour,
+            "team_a_gk_colour": msg.team_a_gk_colour,
+            "team_b_gk_colour": msg.team_b_gk_colour,
         }))
         self._queue.delete_message(msg.message_id, msg.pop_receipt)
 

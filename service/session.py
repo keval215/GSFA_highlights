@@ -48,8 +48,8 @@ from service import config, db, stats
 log = logging.getLogger("gsfa.session")
 
 # The dependency-free constants in stats.py must mirror the pipeline's.
-assert stats.LBL_TEAM0 == vp_labels.POSSESS_TEAM0
-assert stats.LBL_TEAM1 == vp_labels.POSSESS_TEAM1
+assert stats.LBL_TEAM_A == vp_labels.POSSESS_TEAM_A
+assert stats.LBL_TEAM_B == vp_labels.POSSESS_TEAM_B
 assert stats.LBL_LOOSE == vp_labels.POSSESS_LOOSE
 assert stats.LBL_OOF == vp_labels.POSSESS_OOF
 assert stats.EVT_COMPLETED == vp_labels.EVT_COMPLETED
@@ -283,7 +283,7 @@ class MatchSession:
         """Map the two clusters to the caller-supplied team names by jersey
         colour. Runs once, when the fit is committed; the result is pickled
         with clf so later clips only look it up. No-op (team_id_to_name stays
-        None → payload uses team0/team1) if the caller did not supply both
+        None → payload uses team_a/team_b) if the caller did not supply both
         names and both colours, or if colour resolution fails."""
         conn = db.get_conn()
         try:
@@ -298,7 +298,7 @@ class MatchSession:
             log.info("[%s] team colours resolved → %s", self.match_id, mapping)
         except (ValueError, RuntimeError) as exc:
             log.warning("[%s] team colour resolution failed (%s) — "
-                        "falling back to team0/team1 labels", self.match_id, exc)
+                        "falling back to team_a/team_b labels", self.match_id, exc)
 
     # ------------------------------------------------------------------
     # Goalkeeper classifier readiness (no fit stage — just needs the two
@@ -320,16 +320,16 @@ class MatchSession:
         if not gk_colours:
             return
 
-        team0_gk_colour, team1_gk_colour = gk_colours
+        team_a_gk_colour, team_b_gk_colour = gk_colours
         try:
             self.gk_det = GoalkeeperDetector(
-                team0_gk_colour, team1_gk_colour,
+                team_a_gk_colour, team_b_gk_colour,
                 max_colour_dist   = self.ruleset.max_gk_colour_dist,
                 torso_ratio       = self.ruleset.torso_ratio,
                 centre_crop_ratio = self.ruleset.centre_crop_ratio,
             )
             log.info("[%s] GK classifier ready (colours=%s/%s)",
-                     self.match_id, team0_gk_colour, team1_gk_colour)
+                     self.match_id, team_a_gk_colour, team_b_gk_colour)
         except ValueError as exc:
             self._gk_colour_invalid = True
             log.warning("[%s] invalid GK colour (%s) — GK classification disabled",

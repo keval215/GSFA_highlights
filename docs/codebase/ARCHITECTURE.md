@@ -217,11 +217,16 @@ the service will fail fast at startup until `stats.py` is updated too.
 ## 6. The unified detection model (recent change)
 
 The pipeline used to run **two** detection models per frame (YOLOv11 for players + RF-DETR
-for the ball). It now runs **one** unified YOLOv11m model that emits all four classes
-(`active_player`, `ball`, `goal_post`, `referee`). The ball comes free from the same
-forward pass via `best_ball()`. The old separate RF-DETR ball model and its weights were
-removed entirely; the write-up that tracked this migration (`yolo_change.md`) has since
-been deleted from the repo. The root-level `heatmap.py` and `shots_on_t.py` standalone
+for the ball). It now runs **one** unified YOLOv11m model per frame; the ball comes free
+from the same forward pass via `best_ball()`. The class set is **per-ruleset**: the
+**futsal** model emits four classes (`active_player`, `ball`, `goal_post`, `referee`); the
+**classic** model is a *separate* 3-class checkpoint with no `goal_post` (referee at id 2).
+The id→name map is `RulesetConfig.class_names` (not a single hardcoded dict), and
+`PlayerDetector.__init__` logs a warning if a loaded checkpoint's class count doesn't match
+its ruleset's map. Nothing downstream requires `goal_post` — it feeds only a debug overlay
+in `video_analysis/run.py`; GK detection and homography don't use it. The old separate
+RF-DETR ball model and its weights were removed entirely; the write-up that tracked this
+migration (`yolo_change.md`) has since been deleted from the repo. The root-level `heatmap.py` and `shots_on_t.py` standalone
 tools, which were out of scope for that change and kept the older separate detectors,
 have themselves since been deleted from the repo — see
 [scripts/README.md](scripts/README.md).
@@ -284,13 +289,18 @@ classic-model checkpoint — **not yet production-usable**. `rulesets/registry.p
 single validated lookup point, used by both `video_analysis/run.py --ruleset` and
 `service/`.
 
+Per-ruleset fields include `player_model_weights`, `class_names` (the detector's id→name
+map — 3-class for classic, 4-class for futsal), `player_conf`/`ball_conf`, and the
+team-classifier / tracker / Kalman / foot-zone / pass-FSM tunables.
+
 A match's ruleset is selected once (the `ruleset` form field on the **first** upload
 request for a `match_id`) and fixed for that match's lifetime — `matches.ruleset` in SQL
 (migration v4, not yet applied to the live DB), never updated after `INSERT`. The
 `futsal` ruleset keeps reading the existing `PLAYER_WEIGHTS` env var (backward
 compatible); other rulesets read `<RULESET>_PLAYER_WEIGHTS` (e.g.
-`CLASSIC_PLAYER_WEIGHTS` — not yet set anywhere, since no classic-trained checkpoint
-exists). `service/session.py::ModelBundle` loads one `PlayerDetector` per ruleset
-lazily, on first match of that ruleset, rather than eagerly at worker startup.
+`CLASSIC_PLAYER_WEIGHTS`, which points at a 3-class classic checkpoint on the VM;
+`rulesets/classic.py::class_names` maps its ids, and goal-post detection is intentionally
+absent for classic). `service/session.py::ModelBundle` loads one `PlayerDetector` per
+ruleset lazily, on first match of that ruleset, rather than eagerly at worker startup.
 
 See [rulesets/README.md](rulesets/README.md) for the full field list.

@@ -1,11 +1,13 @@
 """
 modules/detectors/player_detector.py — GSFA Detection Module
 
-Wraps the unified YOLOv11m model (trained at imgsz 960, 4 classes):
-    0 → active_players (mapped internally to "active_player")
-    1 → ball
-    2 → goal_post
-    3 → referee
+Wraps the per-ruleset player model. futsal is a unified YOLOv11m trained at
+imgsz 960 with 4 classes; classic is a separate 3-class model (no goal_post):
+    futsal:  0 → active_players ("active_player")  1 → ball  2 → goal_post  3 → referee
+    classic: 0 → active_players ("active_player")  1 → ball  2 → refree ("referee")
+
+The id→name map is supplied per ruleset via `class_names` (see rulesets/*.py);
+`CLASS_NAMES` below is only the fallback used when none is passed.
 
 The ball class is now produced by this same model; there is no separate
 RF-DETR ball detector. Use modules.possession.best_ball(frame_dets)
@@ -29,12 +31,16 @@ Quick start:
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Optional
 
 import cv2
 import numpy as np
 from ultralytics import YOLO
+
+log = logging.getLogger("gsfa.detector")
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +83,11 @@ class PlayerDetector:
 
     MODEL_PATH = r"C:\Users\Admin\OneDrive\Desktop\CZ\GSFA_PLAYER_DETECTION.pt"
 
-    # Unified YOLOv11m id → internal class name. The model's data.yaml names the
-    # player class "active_players" (plural); we keep the singular "active_player"
-    # here so all downstream consumers (team classifier, possession, draw) stay
-    # unchanged. NOTE: ids shifted vs the old 3-class model (goal_post 1→2,
-    # referee 2→3) — ball is the new id 1.
+    # Fallback id → internal class name, used only when no per-ruleset
+    # `class_names` is passed to __init__. This is the unified 4-class futsal
+    # schema. The model's data.yaml names the player class "active_players"
+    # (plural); we keep the singular "active_player" here so all downstream
+    # consumers (team classifier, possession, draw) stay unchanged.
     CLASS_NAMES: dict[int, str] = {
         0: "active_player",
         1: "ball",
@@ -98,6 +104,7 @@ class PlayerDetector:
         player_conf: float = 0.50,
         ball_conf: float = 0.25,
         classes: list[int] | None = None,
+        class_names: Mapping[int, str] | None = None,
     ) -> None:
         # `conf` is the floor passed to the model call. Per-class thresholds are
         # then applied in _parse: players/refs/posts keep the historical 0.50 gate,
@@ -113,6 +120,20 @@ class PlayerDetector:
         self.classes = classes
         self.device = device
         self.model  = YOLO(model_path)
+        # Per-ruleset override of the id→name map (classic is 3-class, futsal 4).
+        # Instance-level shadow; the class attribute stays the 4-class fallback.
+        self.CLASS_NAMES = dict(class_names) if class_names else type(self).CLASS_NAMES
+        # Nothing validated the checkpoint's class schema before — a map/model
+        # mismatch (e.g. classic weights read with the futsal map) was silent.
+        # Warn, don't raise: an unexpected-but-harmless extra class in a future
+        # model shouldn't hard-fail the worker.
+        model_names = getattr(self.model, "names", {}) or {}
+        if len(model_names) != len(self.CLASS_NAMES):
+            log.warning(
+                "player model class count (%d: %s) != configured map (%d: %s) for %s",
+                len(model_names), dict(model_names),
+                len(self.CLASS_NAMES), self.CLASS_NAMES, model_path,
+            )
         # fp16 on CUDA for ~2x throughput on T4; CPU path stays fp32.
         self.half   = (device == "cuda")
         self.imgsz  = 960  # match the yolov11m training resolution (was 640)

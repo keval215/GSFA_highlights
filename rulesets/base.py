@@ -16,7 +16,8 @@ unchanged by this refactor.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,15 @@ class RulesetConfig:
     player_model_weights: str
     player_conf: float = 0.50
     ball_conf: float = 0.25
+    # Class-index -> internal name for THIS ruleset's player_model_weights.
+    # classic and futsal are trained as separate models with different class
+    # sets (classic is 3-class, no goal_post); PlayerDetector._parse routes by
+    # the mapped name, so the values here must be the internal names
+    # ("active_player" / "ball" / "goal_post" / "referee"). Default is the
+    # 4-class futsal schema.
+    class_names: Mapping[int, str] = field(
+        default_factory=lambda: {0: "active_player", 1: "ball", 2: "goal_post", 3: "referee"}
+    )
 
     # --- Team classifier (modules/team_classifier/team_classifier.py) -------
     # Camera-framing-dependent — classic football's typically wider broadcast

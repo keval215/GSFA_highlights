@@ -26,6 +26,9 @@ FUTSAL = RulesetConfig(
     player_model_weights=r"C:\Users\Admin\OneDrive\Desktop\CZ\aiff_v2.pt",
     player_conf=0.50,
     ball_conf=0.25,
+    # Unified 4-class YOLOv11m schema (equals PlayerDetector.CLASS_NAMES; kept
+    # explicit so futsal behaviour is unchanged if the default ever moves).
+    class_names={0: "active_player", 1: "ball", 2: "goal_post", 3: "referee"},
     torso_ratio=0.55,
     blur_threshold=80.0,
     min_crop_px=32,

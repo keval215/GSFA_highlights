@@ -25,6 +25,11 @@ CLASSIC = RulesetConfig(
     player_model_weights=r"C:\Users\Admin\OneDrive\Desktop\CZ\GSFA_CLASSIC_PLAYER_DETECTION.pt",
     player_conf=0.50,
     ball_conf=0.25,
+    # GSFA_CLASSIC_PLAYER_DETECTION.pt / GSL_v1.pt is a 3-class model:
+    #   0 active_players, 1 ball, 2 refree  (the model's own spelling; no goal_post).
+    # Map id 2 to "referee" so refs land in FrameDetections.referees, not
+    # goal_posts. Classic produces no goal-post detections by design.
+    class_names={0: "active_player", 1: "ball", 2: "referee"},
     # Wider broadcast framing → the player bbox is smaller on screen, so take a
     # larger top fraction of it as the jersey crop to keep enough pixels for the
     # SigLIP embedding (futsal uses 0.55 on its tighter, larger boxes).

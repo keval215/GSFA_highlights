@@ -21,8 +21,14 @@ through the entire pipeline — see [ARCHITECTURE.md §4](../ARCHITECTURE.md).
 ## `player_detector.py`
 
 ### What it does
-- Wraps the **unified YOLOv11m** model (trained at `imgsz=960`, 4 classes):
-  `0=active_player, 1=ball, 2=goal_post, 3=referee` (see `PlayerDetector.CLASS_NAMES`).
+- Wraps the ruleset's player model (trained at `imgsz=960`). The class set is
+  **per-ruleset**, not one fixed schema:
+  - **futsal** — 4 classes: `0=active_player, 1=ball, 2=goal_post, 3=referee`.
+  - **classic** — a *separate* 3-class model: `0=active_player, 1=ball, 2=referee`
+    (no `goal_post`; the model's own `data.yaml` spells these `active_players` / `refree`).
+  The id→name map is supplied by `RulesetConfig.class_names` (`rulesets/*.py`);
+  `PlayerDetector.CLASS_NAMES` is only the fallback default (the 4-class futsal schema)
+  used when no `class_names` is passed.
 - Defines the two core data types the whole codebase passes around:
   - **`Detection`** — `class_id`, `class_name`, `bbox`, `confidence`, `foot_point`,
     `centre_point`, plus mutable fields filled in by later stages: `team_id`,
@@ -41,12 +47,20 @@ through the entire pipeline — see [ARCHITECTURE.md §4](../ARCHITECTURE.md).
   `player_conf`/`ball_conf` constructor params, defaulting to `0.50`/`0.25` (the
   small/fast ball gets a lower bar than players). A `RulesetConfig` supplies these two
   per match/run (`rulesets/base.py`); both rulesets currently use the same defaults.
+- `PlayerDetector.__init__` also takes an optional `class_names: Mapping[int,str] | None`
+  — the per-ruleset id→name map (from `RulesetConfig.class_names`). It instance-shadows
+  `CLASS_NAMES`; `_parse` routes by the mapped name, so a classic `{2: "referee"}` puts
+  refs in `fd.referees` and `fd.goal_posts` stays empty. `__init__` also logs a warning
+  when `len(model.names) != len(CLASS_NAMES)` — this mismatch was previously silent and is
+  what let a classic model's id-2 referees get relabeled `goal_post` under the old
+  hardcoded 4-class map.
 - `PlayerDetector.__init__` also takes an optional `classes: list[int] | None` — a class
   allow-list passed straight through to the Ultralytics call (`conf`, `imgsz`, `half`,
-  and now `classes`). `None` (default) keeps all four classes, unchanged for the
-  service/VM and `video_analysis/run.py` paths — only the manual debug harness
-  `modules/team_classifier/test_team_classifier.py` actually passes `classes=[0,1,2]` to
-  hard-filter referees.
+  and now `classes`). `None` (default) keeps every class the model emits (4 for futsal, 3
+  for classic), unchanged for the service/VM and `video_analysis/run.py` paths — only the
+  manual debug harness `modules/team_classifier/test_team_classifier.py` passes
+  `classes=[0,1,2]` (a futsal-schema assumption: that filters refs on the 4-class model
+  but keeps them on the 3-class classic model, where id 2 *is* the referee).
 - fp16 on CUDA (`half=True`) for throughput; fp32 on CPU.
 - `draw()` renders boxes + foot points for debugging.
 

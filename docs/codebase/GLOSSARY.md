@@ -5,7 +5,7 @@ Domain and codebase terms, in the sense this project uses them.
 | Term | Meaning |
 |---|---|
 | **Detection** | One detected object in one frame (`modules/detectors/player_detector.py::Detection`). Carries bbox + the mutable fields later stages fill in (`team_id`, `is_goalkeeper`, `track_id`, `embedding`, `smoothed_bbox`). |
-| **FrameDetections** | All detections for a single frame, split into `players` / `referees` / `goal_posts` / `balls` / `all`. |
+| **FrameDetections** | All detections for a single frame, split into `players` / `referees` / `goal_posts` / `balls` / `all`. Which buckets fill depends on the ruleset's `class_names`: under `classic` the model has no `goal_post` class, so `goal_posts` is always empty. |
 | **foot_point** | Bottom-centre of a bbox `((x1+x2)//2, y2)`. Used for ground-plane reasoning (homography, foot-zone carrier test). |
 | **centre_point** | Geometric centre of a bbox. Used for the ball's tracked position. |
 | **team_id** | `0` or `1` — which team a player belongs to. `None` = unclassified (referees, posts, low-quality crops). Set by the team classifier; the cluster→team mapping is arbitrary-but-fixed per match. |

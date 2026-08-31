@@ -16,7 +16,8 @@ raw material for a future highlight-reel builder.
 
 Both share `PlayerDetector`, `GSFATeamClassifier`, `PlayerTracker`, `BallTracker`, `CarrierEngine`,
 `PassEventTracker` — the possession math is written once. Perception chain per frame:
-`PlayerDetector (unified YOLOv11m: active_player/ball/goal_post/referee)` → `GSFATeamClassifier
+`PlayerDetector (YOLOv11m; classes per ruleset via RulesetConfig.class_names — futsal:
+active_player/ball/goal_post/referee, classic: active_player/ball/referee, no goal_post)` → `GSFATeamClassifier
 (SigLIP)` → `GoalkeeperDetector` → `PlayerTracker (BoT-SORT)` → `BallTracker (Kalman)` →
 `CarrierEngine (foot-zone)` → `PassEventTracker (release/travel/receive FSM)`.
 
@@ -40,7 +41,7 @@ Full doc map: [docs/codebase/README.md](docs/codebase/README.md).
 
 - **Team classifier: always `GSFATeamClassifier` (SigLIP embeddings). Never `ColourHistogramTeamClassifier`** — explicit, standing production decision, not a stale option to reconsider.
 - **Docker must use deadsnakes Python 3.11.** Ubuntu's default `3.11.0rc1` segfaults `torch.jit.script` inside rfdetr-related code paths.
-- **The unified YOLOv11m model replaced the old two-model setup** (separate YOLOv11 + RF-DETR). One forward pass now emits all four classes; the RF-DETR ball model and weights are gone. `heatmap.py` and `shots_on_t.py` are standalone/experimental and still use the older separate detectors — don't "fix" them to match the unified model unless asked.
+- **The unified YOLOv11m model replaced the old two-model setup** (separate YOLOv11 + RF-DETR). One forward pass now emits every class; the RF-DETR ball model and weights are gone. The class set is **per-ruleset** via `RulesetConfig.class_names` — futsal is 4-class (incl. `goal_post`), classic is a separate 3-class model (`active_player`/`ball`/`referee`, no `goal_post`). `PlayerDetector` warns (not fatal) if a checkpoint's class count ≠ its ruleset's map. `heatmap.py` and `shots_on_t.py` are standalone/experimental and still use the older separate detectors — don't "fix" them to match the unified model unless asked.
 - **Never start `video_analysis/possession.py`, the service worker, or any clip-processing run without explicit user permission.** Doc/code reading and editing never needs this.
 - **Never push code, or deploy/copy anything to the production VM (no `git push`, no `scp`/`rsync` to `gsfa-highlights`, no remote `docker compose up`).** The user pushes and deploys themselves. Editing local files and preparing a commit message is fine; executing the push/deploy is not.
 - **If code and docs disagree, the code wins** — but disagreements shouldn't accumulate; see below.

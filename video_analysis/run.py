@@ -201,11 +201,12 @@ def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH,
         player_conf = rs.player_conf,
         ball_conf   = rs.ball_conf,
         classes     = [int(c) for c in detect_classes.split(",")] if detect_classes else None,
-    )   # unified model: players + ball + refs + posts
+        class_names = rs.class_names,
+    )   # classic: players + ball + refs; futsal: + goal posts
     if model_classes:
-        # Override for a test model whose class schema differs from the
-        # production 4-class map (e.g. no goal_post, different class ids) —
-        # instance-only, production PlayerDetector.CLASS_NAMES is untouched.
+        # Explicit override for a one-off test model whose class schema differs
+        # from the ruleset's map (e.g. no goal_post, different class ids) —
+        # instance-only, wins over rs.class_names set above.
         names = model_classes.split(",")
         player_det.CLASS_NAMES = dict(enumerate(names))
     if imgsz:
@@ -404,8 +405,8 @@ def _parse_args() -> "argparse.Namespace":
                     help="Override the ruleset's player_model_weights (test a different .pt)")
     p.add_argument("--model-classes", default=None,
                     help="Comma-separated class names in id order, e.g. "
-                         "'active_player,ball,referee' — overrides PlayerDetector.CLASS_NAMES "
-                         "for models whose class schema differs from the production 4-class map")
+                         "'active_player,ball,referee' — overrides the ruleset's class_names "
+                         "map for a one-off test model whose class schema differs")
     p.add_argument("--imgsz", type=int, default=None,
                     help="Override PlayerDetector's inference resolution (default 960)")
     p.add_argument("--detect-classes", default=None,

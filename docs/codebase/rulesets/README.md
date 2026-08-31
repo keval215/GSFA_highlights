@@ -21,7 +21,9 @@ and classic (11-a-side) football can have different tuning without editing sourc
 ### What it does
 - One frozen dataclass, grouped by the `modules/` class each field feeds:
   - **Detection** (`modules/detectors/player_detector.py`): `player_model_weights`,
-    `player_conf` (0.50), `ball_conf` (0.25).
+    `player_conf` (0.50), `ball_conf` (0.25), `class_names` (per-ruleset detector
+    id→name map; default = the 4-class futsal schema
+    `{0: active_player, 1: ball, 2: goal_post, 3: referee}`).
   - **Team classifier** (`modules/team_classifier/team_classifier.py`): `torso_ratio`
     (0.55), `blur_threshold` (80.0), `min_crop_px` (32), `centre_crop_ratio` (0.50).
   - **Goalkeeper** (`modules/detectors/goalkeeper_detector.py`): `max_gk_colour_dist`
@@ -65,10 +67,12 @@ points, not frame-by-frame calibrated numbers — `travel_timeout_frames`, the K
 coast/gate, the crop/blur tuning and the foot-zone px bounds are the fields most likely to
 move once real match telemetry is in (noted inline in the file).
 
-Fields that differ from `futsal`: `player_model_weights`, `torso_ratio` (0.65),
-`blur_threshold` (55.0), `min_crop_px` (24), `track_buffer_frames_at_30fps` (90),
-`kalman_coast_frames` (20), `kalman_gate_sigma` (8.0), `foot_zone_min_px` (14),
-`foot_zone_max_px` (100), `travel_timeout_frames` (45). Everything else matches `futsal`.
+Fields that differ from `futsal`: `player_model_weights`, `class_names`
+(`{0: active_player, 1: ball, 2: referee}` — a 3-class model, no `goal_post`),
+`torso_ratio` (0.65), `blur_threshold` (55.0), `min_crop_px` (24),
+`track_buffer_frames_at_30fps` (90), `kalman_coast_frames` (20), `kalman_gate_sigma`
+(8.0), `foot_zone_min_px` (14), `foot_zone_max_px` (100), `travel_timeout_frames` (45).
+Everything else matches `futsal`.
 
 ### Deployment requirement
 - `player_model_weights` in the file is only the local-dev default for
@@ -77,6 +81,11 @@ Fields that differ from `futsal`: `player_model_weights`, `torso_ratio` (0.65),
   is now the default, **`CLASSIC_PLAYER_WEIGHTS` must be set to a real classic-trained
   YOLOv11m checkpoint** on the VM, or the worker fails fast at model load on the first
   clip of every new match.
+- That checkpoint is a **3-class** model (`active_players`, `ball`, `refree` — no
+  `goal_post`). `classic.py::class_names` must match its id order; a count mismatch is
+  **logged, not fatal**, by `PlayerDetector.__init__` (`"player model class count … !=
+  configured map …"`). Verify with
+  `docker compose exec worker python3.11 -c "import os; from ultralytics import YOLO; print(YOLO(os.environ['CLASSIC_PLAYER_WEIGHTS']).names)"`.
 
 ## `registry.py`
 

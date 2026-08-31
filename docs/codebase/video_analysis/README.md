@@ -114,8 +114,10 @@ Imported by both `video_analysis/run.py` and the production service
 - Does **not** write to SQL or send callbacks — that's the service path.
 - The config block at the top (`VIDEO_PATH`, `OUTPUT_PATH`, `DEVICE`, …) uses local
   Windows paths — this is a dev harness, not the production entry point.
-- Does **not** pass `classes=` to `PlayerDetector` — all four classes (including
-  referee) are detected, same as the service path.
+- Does **not** pass `classes=` to `PlayerDetector` — every class the ruleset's model emits
+  is detected (futsal: 4, incl. `goal_post`; classic: 3, no `goal_post`), same as the
+  service path. The id→name map comes from `RulesetConfig.class_names`; `--model-classes`
+  still overrides it for a one-off test model whose schema differs.
 
 ### Connections
 - **Imports** `PlayerDetector`/`Detection`/`FrameDetections` (`modules/detectors/`),

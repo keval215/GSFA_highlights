@@ -82,6 +82,7 @@ class ModelBundle:
                 device=config.DEVICE,
                 player_conf=ruleset.player_conf,
                 ball_conf=ruleset.ball_conf,
+                class_names=ruleset.class_names,
             )
             self._player_dets[ruleset.name] = det
         return det

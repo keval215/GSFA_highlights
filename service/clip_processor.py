@@ -35,6 +35,7 @@ from service.stats import (
     EventRow,
     MinuteCounters,
     PriorCorrection,
+    orient_for_team_a,
 )
 
 log = logging.getLogger("gsfa.clip")
@@ -64,6 +65,12 @@ def process_clip(
 
     counters   = MinuteCounters()
     correction: PriorCorrection | None = None
+    # The orientation (session.team_a_cluster_id) that was active when the
+    # row `correction` targets (session.last_written) was itself written —
+    # captured at the moment `correction` is built, before session.finish_clip()
+    # below overwrites session.last_written_team_a_cluster_id with THIS
+    # clip's own value. See stats.orient_for_team_a's docstring.
+    correction_team_a_cluster_id: int | None = None
 
     # Per-stage timers (ms, accumulated over the whole clip).
     t = {"decode": 0.0, "player_det": 0.0, "team_clf": 0.0, "ball_det": 0.0,
@@ -78,7 +85,7 @@ def process_clip(
         """Run one window: batched GPU inference (Pass 1, stateless) then the
         sequential stateful logic (Pass 2) in strict frame order — identical
         semantics to the old per-frame loop, just reordered for batching."""
-        nonlocal correction, n_processed
+        nonlocal correction, correction_team_a_cluster_id, n_processed
         if not win_frames:
             return
 
@@ -132,6 +139,7 @@ def process_clip(
                             half=prev_half, minute=prev_minute,
                             kind=kind, team_id=team_id, frames=prior_n,
                         )
+                        correction_team_a_cluster_id = session.last_written_team_a_cluster_id
             n_processed += 1
 
         win_frames.clear()
@@ -188,7 +196,7 @@ def process_clip(
             t["carrier"]     / n_processed, t["pass"]       / n_processed,
         )
 
-    return ClipResult(
+    result = ClipResult(
         minute_row=counters.to_minute_row(
             session.match_id,
             half,
@@ -199,3 +207,8 @@ def process_clip(
         correction=correction,
         events=event_rows,
     )
+    # Colour-anchored orientation, applied once at write time so a mid-match
+    # re-fit's cluster-order swap never has to be undone at read time. The
+    # correction (if any) targets a DIFFERENT, already-written row, so it is
+    # reoriented against that row's own orientation, not this clip's.
+    return orient_for_team_a(result, session.team_a_cluster_id, correction_team_a_cluster_id)

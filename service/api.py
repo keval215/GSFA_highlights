@@ -22,10 +22,16 @@ POST /post-processing  multipart/form-data:
 All six team_* fields (names, outfield colours, GK colours) are REQUIRED on
 every request, not just the first clip — a missing or blank one is a 422. The
 outfield colours drive cluster→team resolution; the GK colours drive
-goalkeeper colour-matching (session.py's ensure_gk_ready). db.ensure_match's
-COALESCE update means only the first request's values are persisted; later
-clips still must send them but they are ignored past the first.
-Convention: CV cluster id 0 → team_a, cluster id 1 → team_b.
+goalkeeper colour-matching (session.py's ensure_gk_ready).
+db.ensure_match keeps names COALESCE'd (first request's values stick), but
+now OVERWRITES the 4 colour columns on every request and bumps
+matches.fit_generation when an incoming colour genuinely differs from the
+stored one (mid-match jersey/GK colour change) — the worker picks that up
+and re-fits the team classifier on the next clip, superseding prior minutes
+in cumulative stats going forward. See service/session.py (MatchSession.
+reset_for_new_generation) and service/stats.py (orient_for_team_a).
+Convention: CV cluster id 0 → team_a, cluster id 1 → team_b, subject to
+colour-anchored reorientation once a fit resolves team names.
 
 ruleset ("futsal" | "classic", default "classic") selects which sport's CV
 tuning (rulesets/ package) processes this match — foot-zone size, tracker
@@ -35,6 +41,12 @@ match_id ignore it — a match's ruleset is fixed for its lifetime.
 
 half and minute are optional (default 0). Duplicate (match_id, half, minute)
 ⇒ 202 with "duplicate": true, clip skipped.
+
+POST /api/matches/{match_id}/reset-fit  optional JSON body (any of the 6
+    team_* fields, all default null/keep-stored)
+  → unconditionally bumps fit_generation (manual override — forces a re-fit
+    even if no colour actually changed); 404 if match_id is unknown.
+  → {"match_id", "fit_generation"}
 
 GET /health  — api liveness + worker heartbeat + GPU visibility.
 GET /metrics — queue depths, last clip seconds, seconds-behind-live, GPU mem.
@@ -52,6 +64,7 @@ from typing import Optional
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from rulesets import DEFAULT_RULESET, available_rulesets, get_ruleset
 from service import config, db, logging_setup
@@ -108,6 +121,20 @@ def _require_nonblank(**fields: str) -> None:
     empty = [name for name, val in fields.items() if not (val and val.strip())]
     if empty:
         raise HTTPException(422, f"required field(s) empty: {', '.join(sorted(empty))}")
+
+
+def _require_nonblank_if_present(**fields: Optional[str]) -> None:
+    """422 if any given field is PRESENT (not None) but blank/whitespace-only.
+    Unlike _require_nonblank, None (field omitted — "leave the stored value
+    alone") is fine here; only an explicit "" / "  " is rejected. Without
+    this, POST /reset-fit's optional body would let db.bump_fit_generation's
+    COALESCE(?, existing) silently overwrite a real stored colour/name with
+    an empty string — get_team_specs' `not all(row)` then treats that match
+    as never having colours, permanently disabling colour→team resolution
+    and GK colour-matching until someone notices and re-supplies it."""
+    blank = [name for name, val in fields.items() if val is not None and not val.strip()]
+    if blank:
+        raise HTTPException(422, f"field(s) present but blank: {', '.join(sorted(blank))}")
 
 
 @app.on_event("startup")
@@ -239,6 +266,39 @@ async def post_processing(
     size_mb = (file.size / 1024**2) if file.size else 0.0
     log.info("received post-processing video %s (%.1f MB) — queued", match_id, size_mb)
     return {"received": True, "match_id": match_id}
+
+
+class ResetFitBody(BaseModel):
+    """Optional per-field override for POST /api/matches/{id}/reset-fit —
+    every field defaults to None (keep the stored value)."""
+    team_a_name:      Optional[str] = None
+    team_b_name:      Optional[str] = None
+    team_a_colour:    Optional[str] = None
+    team_b_colour:    Optional[str] = None
+    team_a_gk_colour: Optional[str] = None
+    team_b_gk_colour: Optional[str] = None
+
+
+@app.post("/api/matches/{match_id}/reset-fit")
+async def reset_fit(match_id: str, body: Optional[ResetFitBody] = None):
+    """Manual override for the automatic colour-change detection in
+    db.ensure_match: forces a re-fit on this match's next clip regardless of
+    whether any supplied colour actually differs from what's stored — e.g.
+    the operator noticed a bad fit and wants it redone without waiting for
+    (or in lieu of) an actual jersey-colour change. Body is optional; any
+    field supplied overwrites the stored value, same as db.ensure_match's
+    colour-change path (not the first-fill-in COALESCE names keep)."""
+    fields = body.model_dump() if body is not None else {}
+    _require_nonblank_if_present(**fields)
+    conn = db.get_conn()
+    try:
+        new_generation = db.bump_fit_generation(conn, match_id, **fields)
+    finally:
+        conn.close()
+    if new_generation is None:
+        raise HTTPException(404, f"match_id {match_id!r} not found")
+    log.info("[%s] manual reset-fit → fit_generation %d", match_id, new_generation)
+    return {"match_id": match_id, "fit_generation": new_generation}
 
 
 @app.get("/health")

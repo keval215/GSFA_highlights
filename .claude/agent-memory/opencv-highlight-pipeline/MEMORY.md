@@ -1,4 +1,0 @@
-- [Team Classifier Architecture Decision](project_team_classifier.md) — GSFATeamClassifier (SigLIP+torso crop) is the active classifier; ColourHistogram is an unused alternative
-- [Possession + Pass Pipeline Architecture](project_possession_pipeline.md) — complete model/threshold/logic reference for video_analysis/possession.py
-- [User Profile](user_profile.md) — GSFA futsal pipeline, strong CV/ML background, identified root causes independently
-- [Keypoint Homography Pipeline](project_keypoint_homography.md) — model inspection findings and open questions before building homography_test.py

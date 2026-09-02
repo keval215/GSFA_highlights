@@ -27,7 +27,8 @@ from service.stats import EventRow, MinuteRow, PriorCorrection, build_payload
 __all__ = [
     "EventRow", "MinuteRow", "PriorCorrection", "OutboxRow", "build_payload",
     "get_conn", "ensure_match", "get_team_specs", "get_gk_colours", "get_match_progress",
-    "get_match_ruleset", "claim_next_minute", "minute_exists", "cumulative_read",
+    "get_match_ruleset", "get_fit_generation", "claim_next_minute", "minute_exists",
+    "cumulative_read", "mark_minutes_superseded", "bump_fit_generation",
     "write_clip_result", "post_processing_exists", "write_post_processing_result",
     "fetch_pending", "mark_sent", "mark_failed",
 ]
@@ -46,6 +47,16 @@ def get_conn() -> pyodbc.Connection:
 # Match upsert / reads
 # ---------------------------------------------------------------------------
 
+def _normalise_colour(colour: Optional[str]) -> Optional[str]:
+    """lowercase, '#'-stripped, whitespace-trimmed — for change *detection*
+    only ("#FF6600" vs "ff6600" is the same colour). The stored value keeps
+    whatever casing/format the caller sent."""
+    if colour is None:
+        return None
+    s = colour.strip().lstrip("#").strip().lower()
+    return s or None
+
+
 def ensure_match(
     conn: pyodbc.Connection,
     match_id: str,
@@ -57,14 +68,26 @@ def ensure_match(
     team_b_gk_colour: Optional[str] = None,
     ruleset: str = "classic",
 ) -> None:
-    """First clip auto-creates the match; later calls only fill in missing
-    metadata. `ruleset` is only used on creation — it is fixed for the life
-    of the match (team fit, tracker, and pass-FSM state all assume one
-    ruleset), so later calls never change it. team_a = CV cluster id 0,
-    team_b = cluster id 1. Commits."""
+    """First clip auto-creates the match; later calls fill in missing name
+    metadata (COALESCE, first value wins — unchanged) but OVERWRITE the four
+    colour columns whenever a value is supplied, and bump fit_generation
+    (once per call) when an incoming colour genuinely differs from the
+    stored one after normalisation. A colour going from NULL to a real value
+    (first fill-in) is not a "change" — it never bumps fit_generation.
+    `ruleset` is only used on creation — it is fixed for the life of the
+    match (team fit, tracker, and pass-FSM state all assume one ruleset), so
+    later calls never change it. team_a = CV cluster id 0, team_b = cluster
+    id 1 (subject to colour-anchored reorientation at write time once a team
+    fit has resolved names — see service/stats.py::orient_for_team_a).
+    Commits."""
     cur = conn.cursor()
-    cur.execute("SELECT 1 FROM matches WHERE match_id = ?", match_id)
-    if cur.fetchone() is None:
+    cur.execute(
+        "SELECT team_a_colour, team_b_colour, team_a_gk_colour, team_b_gk_colour "
+        "FROM matches WHERE match_id = ?",
+        match_id,
+    )
+    existing = cur.fetchone()
+    if existing is None:
         cur.execute(
             "INSERT INTO matches "
             "  (match_id, team_a_name, team_b_name, team_a_colour, team_b_colour, "
@@ -74,14 +97,25 @@ def ensure_match(
             team_a_gk_colour, team_b_gk_colour, ruleset,
         )
     else:
+        old_a_c, old_b_c, old_a_gk, old_b_gk = existing
+        changed = any(
+            old is not None and new is not None
+            and _normalise_colour(old) != _normalise_colour(new)
+            for old, new in (
+                (old_a_c, team_a_colour), (old_b_c, team_b_colour),
+                (old_a_gk, team_a_gk_colour), (old_b_gk, team_b_gk_colour),
+            )
+        )
+        bump_clause = ", fit_generation = fit_generation + 1" if changed else ""
         cur.execute(
             "UPDATE matches SET "
             "  team_a_name      = COALESCE(team_a_name, ?), "
             "  team_b_name      = COALESCE(team_b_name, ?), "
-            "  team_a_colour    = COALESCE(team_a_colour, ?), "
-            "  team_b_colour    = COALESCE(team_b_colour, ?), "
-            "  team_a_gk_colour = COALESCE(team_a_gk_colour, ?), "
-            "  team_b_gk_colour = COALESCE(team_b_gk_colour, ?), "
+            "  team_a_colour    = COALESCE(?, team_a_colour), "
+            "  team_b_colour    = COALESCE(?, team_b_colour), "
+            "  team_a_gk_colour = COALESCE(?, team_a_gk_colour), "
+            "  team_b_gk_colour = COALESCE(?, team_b_gk_colour)"
+            f"{bump_clause}, "
             "  updated_at = SYSUTCDATETIME() "
             "WHERE match_id = ?",
             team_a_name, team_b_name, team_a_colour, team_b_colour,
@@ -147,6 +181,17 @@ def get_match_ruleset(conn: pyodbc.Connection, match_id: str) -> str:
     return str(row[0]) if row and row[0] else "classic"
 
 
+def get_fit_generation(conn: pyodbc.Connection, match_id: str) -> int:
+    """The match's current fit_generation — bumped by ensure_match on a real
+    colour change or by bump_fit_generation on a manual reset-fit call. 1 for
+    a never-bumped match, or if the row is somehow missing (mirrors
+    get_match_ruleset's should-not-happen fallback)."""
+    cur = conn.cursor()
+    cur.execute("SELECT fit_generation FROM matches WHERE match_id = ?", match_id)
+    row = cur.fetchone()
+    return int(row[0]) if row and row[0] is not None else 1
+
+
 def claim_next_minute(conn: pyodbc.Connection, match_id: str, half: int) -> int:
     """Atomically claim the next sequential minute number for this match+half (1-based).
 
@@ -205,11 +250,77 @@ def cumulative_read(
     cols = ", ".join(f"COALESCE(SUM({c}), 0)" for c in _SUM_COLS)
     cur.execute(
         f"SELECT {cols} FROM minute_stats "
-        "WHERE match_id = ? AND (half < ? OR (half = ? AND minute <= ?))",
+        "WHERE match_id = ? AND superseded = 0 "
+        "  AND (half < ? OR (half = ? AND minute <= ?))",
         match_id, half, half, minute,
     )
     row = cur.fetchone()
     return {c: int(v) for c, v in zip(_SUM_COLS, row)}
+
+
+def mark_minutes_superseded(
+    conn: pyodbc.Connection, match_id: str, upto_half: int, upto_minute: int,
+) -> int:
+    """Flags every minute_stats + events row through (upto_half, upto_minute)
+    inclusive as superseded, after a mid-match team-colour re-fit
+    (fit_generation bump) — cumulative_read excludes them from here on so
+    old-colour and new-colour stats are never summed together. Called by the
+    worker with the match's last processed (half, minute) at the moment the
+    reset is detected; a fresh match (upto_minute == 0, nothing processed
+    yet) matches no rows. Idempotent (only touches superseded = 0 rows).
+    Returns the total rowcount affected across both tables. Commits."""
+    cur = conn.cursor()
+    total = 0
+    for table in ("minute_stats", "events"):
+        cur.execute(
+            f"UPDATE {table} SET superseded = 1 "
+            "WHERE match_id = ? AND superseded = 0 "
+            "  AND (half < ? OR (half = ? AND minute <= ?))",
+            match_id, upto_half, upto_half, upto_minute,
+        )
+        if cur.rowcount and cur.rowcount > 0:
+            total += cur.rowcount
+    conn.commit()
+    return total
+
+
+def bump_fit_generation(
+    conn: pyodbc.Connection,
+    match_id: str,
+    team_a_name: Optional[str] = None,
+    team_b_name: Optional[str] = None,
+    team_a_colour: Optional[str] = None,
+    team_b_colour: Optional[str] = None,
+    team_a_gk_colour: Optional[str] = None,
+    team_b_gk_colour: Optional[str] = None,
+) -> Optional[int]:
+    """Manual override for POST /api/matches/{id}/reset-fit: unconditionally
+    bumps fit_generation (forces a re-fit on the match's next clip regardless
+    of whether any supplied colour actually differs) and overwrites any of
+    the 6 name/colour fields the caller chose to supply — an explicit
+    operator correction, not the auto-detected COALESCE/overwrite split
+    ensure_match uses. Returns the new fit_generation, or None if match_id
+    does not exist. Commits."""
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM matches WHERE match_id = ?", match_id)
+    if cur.fetchone() is None:
+        return None
+    cur.execute(
+        "UPDATE matches SET "
+        "  team_a_name      = COALESCE(?, team_a_name), "
+        "  team_b_name      = COALESCE(?, team_b_name), "
+        "  team_a_colour    = COALESCE(?, team_a_colour), "
+        "  team_b_colour    = COALESCE(?, team_b_colour), "
+        "  team_a_gk_colour = COALESCE(?, team_a_gk_colour), "
+        "  team_b_gk_colour = COALESCE(?, team_b_gk_colour), "
+        "  fit_generation   = fit_generation + 1, "
+        "  updated_at = SYSUTCDATETIME() "
+        "WHERE match_id = ?",
+        team_a_name, team_b_name, team_a_colour, team_b_colour,
+        team_a_gk_colour, team_b_gk_colour, match_id,
+    )
+    conn.commit()
+    return get_fit_generation(conn, match_id)
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +332,6 @@ def write_clip_result(
     row: MinuteRow,
     correction: Optional[PriorCorrection],
     events: list[EventRow],
-    team_id_to_name: Optional[dict[int, str]] = None,
 ) -> dict:
     """One SQL transaction per processed clip:
         upsert minute row + UPDATE prior minute (revision += 1) if corrected
@@ -300,8 +410,7 @@ def write_clip_result(
 
         # 5. Outbox row with a fresh cumulative payload (corrections included).
         sums    = cumulative_read(conn, row.match_id, row.half, row.minute)
-        payload = build_payload(row.match_id, row.half, row.minute, revision, sums,
-                                team_id_to_name)
+        payload = build_payload(row.match_id, row.half, row.minute, revision, sums)
         cur.execute(
             "INSERT INTO callback_outbox (match_id, half, minute, payload) "
             "VALUES (?, ?, ?, ?)",

@@ -115,9 +115,12 @@ Polls the queue. Per clip (`Worker._handle`):
 3. **Ordering guard** — `is_expected(...)`; out-of-order clips are deferred (re-queued
    hidden) up to `ORDERING_RETRIES`, then processed anyway with a logged gap.
 4. **Ruleset + session** — `get_ruleset(db.get_match_ruleset(match_id))` resolves the
-   match's fixed ruleset, then `MatchSessionManager.get_or_create(match_id, ruleset)`
-   returns the cross-clip `MatchSession` (built from that ruleset on first creation only).
-   On clip 1 (or a quality-guard refit on clip 2) it runs the team fit;
+   match's fixed ruleset, then `MatchSessionManager.get_or_create(match_id, ruleset,
+   want_generation=db.get_fit_generation(match_id))` returns the cross-clip `MatchSession`
+   (built from that ruleset on first creation only). If the DB's `fit_generation` has
+   advanced past the session's own (a mid-match team/GK colour change — see §7), the
+   session's team/GK fit is reset and prior minutes are marked `superseded`. On clip 1 (or
+   a quality-guard refit on clip 2, or a generation reset) it runs the team fit;
    `session.ensure_gk_ready()` lazily constructs the `GoalkeeperDetector` once the DB has
    both GK reference colours (cheap, retried every clip — no fit step needed).
 5. **Process** — `clip_processor.process_clip(...)` runs the shared CV pipeline over the
@@ -270,6 +273,15 @@ These are the non-obvious invariants that keep the stats trustworthy:
   persisted stat is always eventually sent (or marked `failed`).
 - **Idempotency + ordering.** Replayed queue messages are dropped via the minute-row
   primary key; out-of-order clips are deferred then processed-with-a-gap.
+- **Mid-match colour changes (`fit_generation`).** Jerseys can genuinely change mid-match.
+  A `POST /api/clips` whose team/GK colour differs from what's stored (or a manual
+  `POST /api/matches/{id}/reset-fit`) bumps `matches.fit_generation`. The worker then
+  resets *that one match's* team classifier + GK detector, re-fits from the next clip
+  (tracker/ball/pass-FSM state is preserved), and flags all prior `minute_stats`/`events`
+  rows `superseded` so `cumulative_read` stops summing old-colour minutes into new ones.
+  Because a re-fit's KMeans can swap the cluster 0/1 order, `stats.orient_for_team_a`
+  reorders each minute's counters at write time so `team_a`/`team_b` always track jersey
+  colour (`MatchSession.team_a_cluster_id` from `resolve_team_names`), not raw label order.
 
 Full detail in [service/README.md](service/README.md).
 

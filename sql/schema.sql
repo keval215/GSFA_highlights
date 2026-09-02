@@ -13,6 +13,7 @@ CREATE TABLE matches (
   team_a_gk_colour      NVARCHAR(32)  NULL,   -- goalkeeper jersey colour, same format
   team_b_gk_colour      NVARCHAR(32)  NULL,
   ruleset               NVARCHAR(16)  NOT NULL DEFAULT 'classic',  -- 'futsal' | 'classic'; fixed at match creation, never changes
+  fit_generation        INT           NOT NULL DEFAULT 1,   -- bumped on a genuine colour change (db.ensure_match) or a manual reset-fit call
   last_half_processed   TINYINT       NOT NULL DEFAULT 1,
   last_minute_processed INT           NOT NULL DEFAULT 0,
   next_clip_seq_h1      INT           NOT NULL DEFAULT 0,  -- atomic per-half upload counters
@@ -84,6 +85,22 @@ CREATE TABLE matches (
 --   EXEC sp_rename 'post_processing.ball_lost_t0',        'ball_lost_team_a',        'COLUMN';
 --   EXEC sp_rename 'post_processing.ball_lost_t1',        'ball_lost_team_b',        'COLUMN';
 
+-- Migration v7 (run once against existing DB before deploying updated service):
+-- Mid-match team/GK colour-change support (Approach A). db.ensure_match now
+-- bumps matches.fit_generation whenever an incoming team/GK colour genuinely
+-- differs from the stored one (never on first-fill-in); POST
+-- /api/matches/{id}/reset-fit bumps it unconditionally as a manual override.
+-- The worker compares it to the MatchSession's own fit_generation (persisted
+-- in a fit_meta.json sidecar next to the team fit pkl) and, when the DB value
+-- has advanced, discards the stale fit, re-fits on the next clip, and marks
+-- every minute_stats/events row up to the last processed minute as
+-- superseded (db.cumulative_read excludes them going forward) so old-colour
+-- and new-colour stats never get summed together. DEFAULT backfills existing
+-- rows to "never bumped" / "not superseded".
+-- ALTER TABLE matches ADD fit_generation INT NOT NULL DEFAULT 1;
+-- ALTER TABLE minute_stats ADD superseded BIT NOT NULL DEFAULT 0;
+-- ALTER TABLE events ADD superseded BIT NOT NULL DEFAULT 0;
+
 -- RAW counters only; one row per processed 60 s clip.
 -- Cumulative numbers are always computed on read (SUM over rows),
 -- never stored — see db.cumulative_read().
@@ -103,6 +120,7 @@ CREATE TABLE minute_stats (
   ball_lost_team_a        INT NOT NULL DEFAULT 0,
   ball_lost_team_b        INT NOT NULL DEFAULT 0,
   revision             INT NOT NULL DEFAULT 0,   -- bumped by retroactive corrections
+  superseded           BIT NOT NULL DEFAULT 0,   -- excluded from cumulative_read after a mid-match fit_generation bump
   clip_blob_path       NVARCHAR(400) NULL,
   processed_at         DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
   CONSTRAINT PK_minute_stats PRIMARY KEY (match_id, half, minute)   -- idempotency key
@@ -144,6 +162,7 @@ CREATE TABLE events (
   from_track    INT NULL,
   to_track      INT NULL,
   travel_frames INT NULL,
+  superseded    BIT NOT NULL DEFAULT 0,   -- excluded from cumulative_read after a mid-match fit_generation bump
   created_at    DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 CREATE INDEX IX_events_match ON events (match_id, half, minute);

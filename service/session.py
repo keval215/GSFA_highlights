@@ -18,6 +18,7 @@ FSM starts IDLE, at most one in-flight pass lost).
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Optional
@@ -157,11 +158,22 @@ class MatchSession:
 
         self.state_dir = config.MATCH_STATE_DIR / match_id
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        self.fit_pkl_path = self.state_dir / "team_siglip.pkl"
+        self.fit_pkl_path  = self.state_dir / "team_siglip.pkl"
+        self.fit_meta_path = self.state_dir / "fit_meta.json"
 
         self.team_clf: Optional[GSFATeamClassifier] = None
         self.fit_status: str = "pending"           # pending | ok | refit | failed
         self._fit_crops_clip1: list[np.ndarray] = []  # kept only while status == refit
+
+        # Which fit_generation (matches.fit_generation) this session's current
+        # fit was made under, and which CV cluster id (0/1) resolved to
+        # team_a_name/team_a_colour under that fit — see _resolve_team_names /
+        # reset_for_new_generation. Both are persisted in fit_meta_path
+        # alongside the pkl so a disk-reloaded session (worker restart, or a
+        # late clip after idle eviction) recovers them instead of silently
+        # reverting to generation 1 / raw cluster order.
+        self.fit_generation: int = 1
+        self.team_a_cluster_id: Optional[int] = None
 
         self.gk_det: Optional[GoalkeeperDetector] = None
         self._gk_colour_invalid = False   # set once if the DB colours fail to parse
@@ -203,6 +215,15 @@ class MatchSession:
         self.proc_idx        = 0    # processed-frame counter, session-global
         self.n_events_seen   = 0    # how many pass_track.events already written
         self.last_written: Optional[tuple[int, int]] = None  # (half, minute)
+        # team_a_cluster_id AS IT WAS when the last_written row was actually
+        # written — NOT necessarily today's team_a_cluster_id. A boundary
+        # PriorCorrection targets that row, so it must be reoriented against
+        # the orientation that row was written under, not the current clip's
+        # (they can differ, e.g. clip 1 commits before colour resolution
+        # succeeds — team_a_cluster_id is still None — and clip 2's combined
+        # refit resolves it, possibly to the other cluster). See
+        # clip_processor.process_clip / stats.orient_for_team_a.
+        self.last_written_team_a_cluster_id: Optional[int] = None
         # Travel frames pending when the previous clip ended — the prior-minute
         # share of the next retroactive adjustment (Conflict 3 split).
         self.carryover_travel_frames = 0
@@ -216,7 +237,9 @@ class MatchSession:
             # bypasses that and keeps the slow PIL processor → ~90ms/frame.
             self.team_clf   = GSFATeamClassifier.load(self.fit_pkl_path, progress=False)
             self.fit_status = "ok"
-            log.info("[%s] team fit loaded from %s", match_id, self.fit_pkl_path)
+            self._load_fit_meta()
+            log.info("[%s] team fit loaded from %s (fit_generation=%d)",
+                     match_id, self.fit_pkl_path, self.fit_generation)
 
     # ------------------------------------------------------------------
     # Team fit (clip 1, dense sampling, quality guard)
@@ -256,6 +279,7 @@ class MatchSession:
             self._fit_crops_clip1 = []
             self._resolve_team_names(clf, crops)
             joblib.dump(clf, self.fit_pkl_path)
+            self._write_fit_meta()
             log.info("[%s] team fit ok (silhouette=%.3f, crops=%d) → %s",
                      self.match_id, score, len(crops), self.fit_pkl_path)
         elif self.fit_status == "pending":
@@ -275,6 +299,7 @@ class MatchSession:
             self._fit_crops_clip1 = []
             self._resolve_team_names(clf, crops)
             joblib.dump(clf, self.fit_pkl_path)
+            self._write_fit_meta()
             log.error("[%s] refit still below threshold (silhouette=%.3f) — "
                       "committing anyway", self.match_id, score)
         return self.fit_status
@@ -282,24 +307,95 @@ class MatchSession:
     def _resolve_team_names(self, clf: GSFATeamClassifier,
                             crops: list[np.ndarray]) -> None:
         """Map the two clusters to the caller-supplied team names by jersey
-        colour. Runs once, when the fit is committed; the result is pickled
-        with clf so later clips only look it up. No-op (team_id_to_name stays
-        None → payload uses team_a/team_b) if the caller did not supply both
-        names and both colours, or if colour resolution fails."""
+        colour, and record which cluster resolved to team_a_name as
+        self.team_a_cluster_id (used by clip_processor's
+        orient_for_team_a() to keep stored team_a/team_b orientation
+        colour-consistent). Runs once, when the fit is committed; the
+        team_id_to_name mapping is pickled with clf so later clips only look
+        it up. team_a_cluster_id stays None (orient_for_team_a becomes a
+        no-op, raw cluster order is used) if the caller did not supply both
+        names and both colours, or if colour resolution fails — on a
+        mid-match re-fit (fit_generation > 1) that failure is logged loudly
+        since it silently corrupts team_a/team_b orientation until the next
+        successful re-fit, a documented v1 limitation."""
         conn = db.get_conn()
         try:
             raw = db.get_team_specs(conn, self.match_id)
         finally:
             conn.close()
         if not raw:
+            self.team_a_cluster_id = None
             return
-        specs = [TeamSpec(name=n, colour=c) for n, c in raw]
+        specs = [TeamSpec(name=n, colour=c) for n, c in raw]   # specs[0] is team_a
         try:
             mapping = clf.resolve_team_names(specs, crops)
-            log.info("[%s] team colours resolved → %s", self.match_id, mapping)
+            self.team_a_cluster_id = next(
+                (cid for cid, name in mapping.items() if name == specs[0].name), None
+            )
+            log.info("[%s] team colours resolved → %s (team_a_cluster_id=%s)",
+                     self.match_id, mapping, self.team_a_cluster_id)
         except (ValueError, RuntimeError) as exc:
+            self.team_a_cluster_id = None
             log.warning("[%s] team colour resolution failed (%s) — "
-                        "falling back to team_a/team_b labels", self.match_id, exc)
+                        "falling back to raw cluster order for team_a/team_b",
+                        self.match_id, exc)
+            if self.fit_generation > 1:
+                log.error("[%s] colour resolution failed on a re-fit (fit_generation=%d) "
+                          "— team_a/team_b orientation for this and following minutes may "
+                          "not match team_a_colour until the next successful re-fit",
+                          self.match_id, self.fit_generation)
+
+    def _write_fit_meta(self) -> None:
+        """Sidecar written alongside every committed fit pkl (joblib.dump),
+        so fit_generation / team_a_cluster_id survive a disk reload
+        (worker restart, or a late clip after idle eviction) instead of
+        silently reverting to generation 1 / unresolved orientation."""
+        meta = {"fit_generation": self.fit_generation, "team_a_cluster_id": self.team_a_cluster_id}
+        self.fit_meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+    def _load_fit_meta(self) -> None:
+        """Restore fit_generation / team_a_cluster_id from fit_meta_path on a
+        disk-reloaded fit. A missing/corrupt sidecar (e.g. a pkl committed
+        before this feature existed) degrades to generation 1 / unresolved
+        orientation rather than raising — should not crash the worker."""
+        try:
+            meta = json.loads(self.fit_meta_path.read_text(encoding="utf-8"))
+            self.fit_generation    = int(meta.get("fit_generation", 1))
+            self.team_a_cluster_id = meta.get("team_a_cluster_id")
+        except (OSError, json.JSONDecodeError, ValueError, TypeError):
+            log.warning("[%s] fit_meta.json missing/unreadable at %s — assuming "
+                        "fit_generation=1, team_a orientation unresolved",
+                        self.match_id, self.fit_meta_path)
+            self.fit_generation    = 1
+            self.team_a_cluster_id = None
+
+    def reset_for_new_generation(self, n: int) -> None:
+        """Mid-match team/GK colour change (matches.fit_generation advanced
+        past this session's own): discard the committed team fit and GK
+        classifier and start clean, as if this were clip 1 again, under
+        fit_generation n. Re-running KMeans on the SAME clusters mid-match
+        can swap team 0/1 labels and corrupt stats (see ensure_fit's
+        docstring) — a genuinely new fit_generation is the one case where
+        that's exactly what we want, since the jerseys themselves changed.
+
+        Cross-clip CV state that has nothing to do with jersey colour —
+        tracker / ball_tracker / carrier_eng / pass_track, proc_idx,
+        n_events_seen, last_written, carryover_travel_frames — is left
+        untouched, so an in-flight pass isn't lost across the reset."""
+        if self.fit_pkl_path.exists():
+            self.fit_pkl_path.unlink()
+        if self.fit_meta_path.exists():
+            self.fit_meta_path.unlink()
+        self.team_clf   = None
+        self.fit_status = "pending"
+        self._fit_crops_clip1 = []
+        self.gk_det = None
+        self._gk_colour_invalid = False
+        self.team_a_cluster_id = None
+        self.fit_generation = n
+        self.last_touched = time.monotonic()
+        log.info("[%s] session reset for fit_generation=%d (team/GK colours changed)",
+                 self.match_id, n)
 
     # ------------------------------------------------------------------
     # Goalkeeper classifier readiness (no fit stage — just needs the two
@@ -352,6 +448,11 @@ class MatchSession:
     def finish_clip(self, half: int, minute: int) -> None:
         """Record boundary state after a clip is fully processed."""
         self.last_written = (half, minute)
+        # Snapshot NOW (this clip's own team_a_cluster_id, unchanged since
+        # ensure_fit ran before process_clip) — becomes "the orientation this
+        # row was written under" for whichever future clip's boundary
+        # correction, if any, ends up targeting it.
+        self.last_written_team_a_cluster_id = self.team_a_cluster_id
         if self.pass_track.phase in _TRAVEL_PHASES:
             self.carryover_travel_frames = self.pass_track._travel_frames_so_far
         else:
@@ -377,16 +478,31 @@ class MatchSessionManager:
         self.models = models
         self._sessions: dict[str, MatchSession] = {}
 
-    def get_or_create(self, match_id: str, ruleset: RulesetConfig) -> MatchSession:
+    def get_or_create(
+        self, match_id: str, ruleset: RulesetConfig,
+        want_generation: Optional[int] = None,
+    ) -> tuple[MatchSession, bool]:
         """`ruleset` is only used when creating a new session — an existing
         session keeps whatever ruleset it was created with (a match's
-        ruleset is fixed for its lifetime, see db.ensure_match)."""
+        ruleset is fixed for its lifetime, see db.ensure_match).
+
+        `want_generation` (db.get_fit_generation's current value) is
+        compared against the session's own fit_generation — new, cached, and
+        disk-reloaded sessions alike (a disk reload restores fit_generation
+        from the fit_meta.json sidecar, so a stale sidecar next to an
+        up-to-date pkl is caught here too). When want_generation is higher,
+        the session is reset via reset_for_new_generation before being
+        returned. Returns (session, just_reset)."""
         sess = self._sessions.get(match_id)
         if sess is None:
             sess = MatchSession(match_id, self.models, ruleset)
             self._sessions[match_id] = sess
+        just_reset = False
+        if want_generation is not None and want_generation > sess.fit_generation:
+            sess.reset_for_new_generation(want_generation)
+            just_reset = True
         sess.last_touched = time.monotonic()
-        return sess
+        return sess, just_reset
 
     def evict_idle(self) -> None:
         now = time.monotonic()

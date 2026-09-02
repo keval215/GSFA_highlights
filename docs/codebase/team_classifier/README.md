@@ -50,7 +50,12 @@ in place**. Referees and goal posts are left `None`.
   embeds crops from many frames in one SigLIP pass (the service's batched path).
 - **Team-name resolution** (`resolve_team_names`): optionally maps the two clusters to
   caller-supplied team names by comparing each cluster's saturation-weighted mean jersey
-  colour (HSV) against the caller's colours. Runs once at fit time; result pickled.
+  colour (HSV) against the caller's colours. Runs once at fit time; the `{cluster_id →
+  name}` mapping is pickled. In the service this mapping is also what pins **which cluster
+  is `team_a`**: `service/session.py` extracts the cluster id that resolved to
+  `team_a_name` as `MatchSession.team_a_cluster_id`, and `service/stats.py::orient_for_team_a`
+  reorders each minute's stored counters so `team_a`/`team_b` always follow jersey colour,
+  not raw KMeans label order.
 - **Speed details:** swaps in the torchvision "fast" SigLIP processor on every
   construction *and* warm-load (`_use_fast_processor`) — same normalization, faster CPU
   preprocessing. The pkl bakes in the slow processor, so this is re-applied after load.
@@ -58,7 +63,15 @@ in place**. Referees and goal posts are left `None`.
 
 ### What it does NOT do
 - Does **not** assign a *meaningful* identity to cluster 0 vs 1 by itself — the mapping is
-  arbitrary-but-fixed per match unless `resolve_team_names` is given names + colours.
+  arbitrary unless `resolve_team_names` is given names + colours. In the service it is
+  fixed for the life of a *fit*, but a fit is no longer necessarily permanent: a mid-match
+  team/GK colour change bumps `matches.fit_generation`, and the worker then discards the
+  committed fit and re-fits from the next clip (see
+  [service/README.md](../service/README.md) — `MatchSession.reset_for_new_generation`). A
+  re-fit's KMeans can land the clusters in the opposite 0/1 order; `orient_for_team_a`
+  (write-time, per minute) is what keeps stored `team_a`/`team_b` consistent across that
+  swap, so the previous "never refit after committing" guard is now "never refit *the same
+  generation's* fit".
 - Does **not** classify referees or goal posts (left `None`).
 - Does **not** handle goalkeepers specially — `GoalkeeperDetector` now classifies GKs by
   direct colour match, running **independently** of (not sequentially after) this class;
@@ -77,7 +90,9 @@ in place**. Referees and goal posts are left `None`.
   ruleset-parametrized — takes a `RulesetConfig` and passes its `torso_ratio`/
   `min_crop_px`/`blur_threshold` through), then calls `clf._classifier.fit(...)` directly
   with a silhouette-quality guard (`fit_and_score`). It uses `classify_batch` per clip and
-  `resolve_team_names` for naming. The `GSFATeamClassifier(device=config.DEVICE, ...)` it
+  `resolve_team_names` for naming (storing the resolved `team_a` cluster id as
+  `MatchSession.team_a_cluster_id`, persisted in a `fit_meta.json` sidecar alongside the
+  pkl so it survives a disk reload). The `GSFATeamClassifier(device=config.DEVICE, ...)` it
   constructs also passes the match's ruleset's `torso_ratio`/`blur_threshold`/
   `min_crop_px`/`centre_crop_ratio`.
 - `SIGLIP_MODEL_PATH` / `TeamClassifier` / `create_batches` come from the external

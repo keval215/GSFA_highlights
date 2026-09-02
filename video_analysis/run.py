@@ -56,16 +56,25 @@ from rulesets import DEFAULT_RULESET, RulesetConfig, get_ruleset
 # ---------------------------------------------------------------------------
 
 DEVICE      = "cuda"   # CUDA is available locally; "cpu" works but is slow at imgsz 960
-VIDEO_PATH  = r"C:\Users\Admin\Downloads\Final_Test.mp4"
+VIDEO_PATH  = r"C:\Users\Admin\Downloads\6a8edb537fe372ce49da9eb4_part-00037.mp4"
 OUTPUT_PATH = r"data/output/possession_output.mp4"
 CMC_METHOD  = "ecc"
+
+# Player/ball detector weights. Set None to fall back to the ruleset's
+# player_model_weights; pass --model-path to override per-run.
+MODEL_PATH  = r"C:\Users\Admin\OneDrive\Desktop\CZ\GSL_v1.pt"
+
+# Goalkeeper reference jersey colours (hex or CSS name). Both must be set to
+# enable GK classification; pass --team-a/b-gk-colour to override per-run.
+TEAM_A_GK_COLOUR = "#38BDF8"
+TEAM_B_GK_COLOUR = "#F97316"
 
 # Debug / speed run
 PROCESS_DURATION_SEC = 480      # stop after this many seconds
 
-# Visuals
+# Visuals — outfield jersey colours: team_a #facc14, team_b #700918
 POSSESS_BAR_H = 42
-TEAM_BGR = {0: (255, 80, 0), 1: (0, 80, 255), None: (160, 160, 160)}
+TEAM_BGR = {0: (20, 204, 250), 1: (24, 9, 112), None: (160, 160, 160)}
 GK_BGR   = (0, 215, 255)
 BALL_BGR = (0, 255, 255)
 REF_BGR  = (80, 220, 80)
@@ -81,8 +90,8 @@ from modules.possession.labels import (  # noqa: E402
 # ---------------------------------------------------------------------------
 # SUPERVISION ANNOTATORS
 # ---------------------------------------------------------------------------
-# Index 0 = team_a (blue), 1 = team_b (red), 2 = unclassified (grey)
-_PALETTE = sv.ColorPalette.from_hex(["#0050FF", "#FF5000", "#A0A0A0"])
+# Index 0 = team_a (#facc14), 1 = team_b (#700918), 2 = unclassified (grey)
+_PALETTE = sv.ColorPalette.from_hex(["#facc14", "#700918", "#A0A0A0"])
 
 _ellipse_ann  = sv.EllipseAnnotator(color=_PALETTE, thickness=1)
 _triangle_ann = sv.TriangleAnnotator(
@@ -187,9 +196,10 @@ def draw_frame(
 # ---------------------------------------------------------------------------
 
 def run(video_path: str = VIDEO_PATH, out_path: str = OUTPUT_PATH,
-        team_a_gk_colour: str | None = None, team_b_gk_colour: str | None = None,
+        team_a_gk_colour: str | None = TEAM_A_GK_COLOUR,
+        team_b_gk_colour: str | None = TEAM_B_GK_COLOUR,
         ruleset: str = DEFAULT_RULESET,
-        model_path: str | None = None, model_classes: str | None = None,
+        model_path: str | None = MODEL_PATH, model_classes: str | None = None,
         imgsz: int | None = None, detect_classes: str | None = None) -> None:
     rs: RulesetConfig = get_ruleset(ruleset)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
@@ -399,9 +409,9 @@ def _parse_args() -> "argparse.Namespace":
     p.add_argument("--out", default=OUTPUT_PATH, help="Output annotated .mp4 path")
     p.add_argument("--ruleset", default=DEFAULT_RULESET, choices=available_rulesets(),
                     help="Which sport's tuning to use")
-    p.add_argument("--team-a-gk-colour", default=None)
-    p.add_argument("--team-b-gk-colour", default=None)
-    p.add_argument("--model-path", default=None,
+    p.add_argument("--team-a-gk-colour", default=TEAM_A_GK_COLOUR)
+    p.add_argument("--team-b-gk-colour", default=TEAM_B_GK_COLOUR)
+    p.add_argument("--model-path", default=MODEL_PATH,
                     help="Override the ruleset's player_model_weights (test a different .pt)")
     p.add_argument("--model-classes", default=None,
                     help="Comma-separated class names in id order, e.g. "

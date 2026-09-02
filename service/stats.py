@@ -14,6 +14,7 @@ internal team_a/team_b names onto those wire keys.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Optional
 
@@ -206,9 +207,88 @@ def is_expected(last_half: int, last_minute: int, half: int, minute: int) -> boo
     return (half, minute) in ((last_half, last_minute + 1), (last_half + 1, 1))
 
 
+def _flip_team_id(team_id: Optional[int]) -> Optional[int]:
+    return 1 - team_id if team_id in (0, 1) else team_id
+
+
+_SAME_AS_ROW = object()   # sentinel: correction_team_a_cluster_id defaults to team_a_cluster_id
+
+
+def orient_for_team_a(
+    result: ClipResult,
+    team_a_cluster_id: Optional[int],
+    correction_team_a_cluster_id: object = _SAME_AS_ROW,
+) -> ClipResult:
+    """Reorient one clip's raw minute_row / events / correction so the
+    `team_a_*` fields (and from_team/to_team/correction.team_id == 0) always
+    mean the CV cluster whose resolved jersey colour matches team_a_colour
+    (service/session.py's `_resolve_team_names`, exposed as
+    `MatchSession.team_a_cluster_id`).
+
+    CV cluster id 0 IS team_a by convention, so each part is a no-op unless
+    its cluster id == 1 — which only happens after a re-fit whose KMeans
+    happened to land the clusters in the other order. A cluster id of None
+    (colour resolution hasn't run or failed) is also treated as no-op — fall
+    back to raw cluster order, a documented v1 limitation (see
+    MatchSession._resolve_team_names).
+
+    `team_a_cluster_id` orients minute_row + events (THIS clip's own row).
+    `result.correction`, when present, targets a DIFFERENT row — the
+    previous minute, already written under whatever orientation was active
+    at THAT time — so it must be reoriented with
+    `correction_team_a_cluster_id` (MatchSession.last_written_team_a_cluster_id
+    at the moment the correction was built), not `team_a_cluster_id`. The two
+    can differ, e.g. clip 1 commits before colour resolution succeeds
+    (team_a_cluster_id is still None there) and clip 2's combined refit
+    resolves it, possibly to the other cluster — reorienting a clip-2
+    boundary correction against clip 1's (unreoriented) row with clip 2's
+    cluster id would flip the wrong team_a/team_b columns on that row.
+    Omitting this argument defaults it to `team_a_cluster_id`, for callers
+    that know orientation hasn't changed since the target row was written.
+
+    Must be applied once, at write time (here, from clip_processor before
+    the row reaches db.write_clip_result), NOT at cumulative_read/
+    build_payload time — a mid-match swap must not retroactively reorder
+    already-summed prior minutes."""
+    if correction_team_a_cluster_id is _SAME_AS_ROW:
+        correction_team_a_cluster_id = team_a_cluster_id
+
+    flip_row  = team_a_cluster_id not in (None, 0)
+    flip_corr = correction_team_a_cluster_id not in (None, 0)
+    if not flip_row and not flip_corr:
+        return result
+
+    oriented_row    = result.minute_row
+    oriented_events = result.events
+    if flip_row:
+        row = result.minute_row
+        oriented_row = dataclasses.replace(
+            row,
+            frames_team_a=row.frames_team_b,
+            frames_team_b=row.frames_team_a,
+            passes_completed_team_a=row.passes_completed_team_b,
+            passes_completed_team_b=row.passes_completed_team_a,
+            interceptions_team_a=row.interceptions_team_b,
+            interceptions_team_b=row.interceptions_team_a,
+            ball_lost_team_a=row.ball_lost_team_b,
+            ball_lost_team_b=row.ball_lost_team_a,
+        )
+        oriented_events = [
+            dataclasses.replace(e, from_team=_flip_team_id(e.from_team), to_team=_flip_team_id(e.to_team))
+            for e in result.events
+        ]
+
+    oriented_correction = result.correction
+    if flip_corr and result.correction is not None:
+        oriented_correction = dataclasses.replace(
+            result.correction, team_id=_flip_team_id(result.correction.team_id)
+        )
+
+    return ClipResult(minute_row=oriented_row, correction=oriented_correction, events=oriented_events)
+
+
 def build_payload(
     match_id: str, half: int, minute: int, revision: int, sums: dict[str, int],
-    team_id_to_name: Optional[dict[int, str]] = None,
 ) -> dict:
     """advance-stats body for POST /v1/pvt/tournament-duelz/{id}/advance-stats.
 
@@ -217,12 +297,12 @@ def build_payload(
     accuracy itself.
 
     The internal counters are keyed team_a / team_b (cluster id 0 → team_a,
-    1 → team_b); the wire body keeps its historical `_a` / `_b` suffixes so the
-    tournament-duelz consumer is unchanged.
+    1 → team_b, or whatever cluster orient_for_team_a() aligned to team_a at
+    write time — see that function); the wire body keeps its historical
+    `_a` / `_b` suffixes so the tournament-duelz consumer is unchanged.
 
-    match_id / half / minute / revision are not part of the body — they live on
-    the outbox columns and drive ordering and the per-duel URL. team_id_to_name
-    is accepted for call-site compatibility but is unused here."""
+    match_id / half / minute / revision are not part of the body — they live
+    on the outbox columns and drive ordering and the per-duel URL."""
     return {
         "frames_a":           sums["frames_team_a"],
         "frames_b":           sums["frames_team_b"],

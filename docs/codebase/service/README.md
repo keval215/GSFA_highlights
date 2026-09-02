@@ -40,17 +40,28 @@ See also: [docs/API.md](../../API.md) (HTTP contract + env vars) and
    worker creates it itself defaulting to `ruleset="futsal"` and logs a loud warning — the
    actual requested ruleset isn't carried in the clip queue message, so a genuinely
    classic match hitting this path ends up silently (but loudly-logged) wrong.
-4. **Ruleset + session** — `ruleset = get_ruleset(db.get_match_ruleset(conn, match_id))`;
-   `manager.get_or_create(match_id, ruleset)`; download blob to a job dir. `ruleset` is
-   only used if a new session is created — an existing session keeps whatever ruleset it
-   was built with.
-5. **Team fit** — if `session.fit_status != "ok"`, `session.ensure_fit(clip_path)`.
+4. **Ruleset + session + generation check** — `ruleset = get_ruleset(db.get_match_ruleset(conn,
+   match_id))`; `want_gen = db.get_fit_generation(conn, match_id)`; `session, just_reset =
+   manager.get_or_create(match_id, ruleset, want_gen)`; download blob to a job dir. `ruleset`
+   is only used if a new session is created — an existing session keeps whatever ruleset it
+   was built with. If `just_reset` (the DB's `fit_generation` had advanced past this
+   session's own — a mid-match team/GK colour change, auto-detected or via
+   `POST /api/matches/{id}/reset-fit`), `db.mark_minutes_superseded(conn, match_id,
+   last_half, last_minute)` flags every `minute_stats`/`events` row up to the last
+   processed minute so `cumulative_read` excludes them going forward, and a WARNING is
+   logged with the row count. The ordering pointer (`last_half_processed`/
+   `last_minute_processed`) is untouched.
+5. **Team fit** — if `session.fit_status != "ok"`, `session.ensure_fit(clip_path)`. After a
+   generation reset this is "pending" again, so the very next clip re-fits from scratch.
 6. **Process** — `clip_processor.process_clip(session, clip_path, half, minute,
    clip_duration_seconds, blob_path)` — internally calls `session.ensure_gk_ready()` first
    (lazily builds `GoalkeeperDetector` once the DB has both GK reference colours; a no-op
-   once built) and runs `gk_det.classify(...)` per frame if ready.
-7. **Persist** — `db.write_clip_result(conn, minute_row, correction, events, team_names)`
-   — a single transaction.
+   once built), runs `gk_det.classify(...)` per frame if ready, and reorients the returned
+   `ClipResult` via `stats.orient_for_team_a` before returning it (see `clip_processor.py`
+   below).
+7. **Persist** — `db.write_clip_result(conn, minute_row, correction, events)` — a single
+   transaction. No team-name/colour argument any more; orientation was already applied in
+   step 6.
 8. **Callback** — `notifier.send_pending_for_match(conn, match_id)`.
 9. **Cleanup** — delete queue message + blob + job dir; `manager.evict_idle()`.
 
@@ -86,9 +97,10 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - `POST /api/clips` (multipart): hygiene checks (content type, size cap), all six
   `team_*` fields required and non-blank (`_require_nonblank` ⇒ `422`), validates
   `ruleset` against the `rulesets` registry (`422` on unknown), `db.ensure_match`
-  (first clip creates the match — with its `ruleset`, fixed for the match's lifetime —
-  and stores the six `team_a_*`/`team_b_*` fields; later clips must still send them but
-  they are ignored past the first, and any `ruleset` they send is ignored),
+  (first clip creates the match — with its `ruleset`, fixed for the match's lifetime.
+  Names stay fill-in-only (COALESCE, first value wins); the four **colour** fields are
+  overwritten on every request and bump `matches.fit_generation` when a supplied colour
+  genuinely differs from the stored one — the mid-match colour-change path, see `db.py`),
   resolve/claim the minute (`db.claim_next_minute`
   if not supplied), dedupe (`minute_exists` or blob already exists ⇒ `202 duplicate`),
   else `blob.upload_stream` + `queue.enqueue` ⇒ `202`.
@@ -96,6 +108,14 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   `team_*` fields as above; accepts a whole-match video, stores it at
   `clips/<match_id>/post_processing.mp4`, enqueues a background job, and returns `200`
   once the upload is fully received. The worker deletes the blob after processing.
+- `POST /api/matches/{match_id}/reset-fit` (JSON, body optional — `ResetFitBody`, all 6
+  name/colour fields default `None`): manual override that unconditionally bumps
+  `matches.fit_generation` (`db.bump_fit_generation`), forcing a re-fit on the match's
+  next clip even with no real colour change. Any supplied field overwrites the stored
+  value (not COALESCE). `404` if the match row is absent; `_require_nonblank_if_present`
+  ⇒ `422` if a field is present but blank (an omitted field is fine — only an explicit
+  `""`/whitespace is rejected, since a blanked colour would silently disable colour→team
+  resolution and GK matching). Returns `{match_id, fit_generation}`. See [docs/API.md](../../API.md).
 - `GET /health` — 200 if the worker heartbeat is < 300 s old, else 503.
 - `GET /metrics` — queue depths, last-clip seconds, seconds-behind-live, GPU mem,
   `last_post_processing_error` (the most recent whole-match job's failure, if any — not
@@ -112,6 +132,11 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   seconds-behind-live, active matches, `last_post_processing_error`).
 - **Does NOT** parallelise across clips — one clip at a time (simple, ~1 concurrent match
   expected). **Does NOT** render video.
+- **Mid-match fit-generation reset:** `_handle` reads `db.get_fit_generation` and passes it
+  as `want_generation` into `manager.get_or_create`. If that triggers a per-match session
+  reset (`just_reset`), it calls `db.mark_minutes_superseded(match_id, last_half,
+  last_minute)` and logs a WARNING with the superseded row count. Only that one match's
+  session is affected — no worker restart, other matches untouched.
 - Routes `kind = post_processing` queue messages through a separate whole-match path
   (`_handle_post_processing`) and writes the `post_processing` SQL table:
   - The queue message is **deleted before processing starts** — no lease renewal, no
@@ -121,7 +146,9 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   - The `MatchSession` is constructed **directly** (`MatchSession(match_id, self.models,
     ruleset)`), never through `MatchSessionManager` and never stored/reused — every
     attempt starts from clean tracker/ball/carrier/pass-FSM state, isolated from the
-    live-clip path for the same match.
+    live-clip path for the same match. It always fits fresh (`fit_status` starts
+    `"pending"`), so it never consults `fit_generation` or the reset check — a colour
+    change detected here by `ensure_match` has no separate effect on this one-shot run.
   - `db.ensure_match(...)` is called first (it only sets `ruleset` on the row's initial
     `INSERT`, so a match created by a prior `/api/clips` upload keeps that ruleset), then
     `ruleset = get_ruleset(db.get_match_ruleset(conn, match_id))` reads it back.
@@ -141,17 +168,42 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - **`MatchSession`** — `__init__(match_id, models, ruleset: RulesetConfig)` (gained the
   `ruleset` param). All cross-clip state for one match: `tracker`, `ball_tracker`,
   `carrier_eng`, `pass_track`, `proc_idx`, `team_clf`, `fit_status`, `gk_det` (see below),
-  the carryover for a pass spanning a clip boundary, and `last_written`. `self.player_det
-  = models.player_detector(ruleset)` resolves this match's detector. Every CV class
+  `fit_generation`, `team_a_cluster_id`, the carryover for a pass spanning a clip
+  boundary, `last_written`, and `last_written_team_a_cluster_id`. `self.player_det =
+  models.player_detector(ruleset)` resolves this match's detector. Every CV class
   (`PlayerTracker`, `BallTracker`, `CarrierEngine`, `PassEventTracker`,
   `GSFATeamClassifier`) is now constructed **from `ruleset`'s fields** rather than
   hardcoded defaults (values are unchanged for `futsal`). On construction it reloads the
   team fit pkl from `MATCH_STATE_DIR/<match_id>/team_siglip.pkl` if present (survives
-  restarts).
+  restarts), and restores `fit_generation`/`team_a_cluster_id` from the `fit_meta.json`
+  sidecar next to it (see below).
   - `ensure_fit(clip)` — clip-1 dense fit with a **silhouette quality guard**
     (`fit_and_score`): below `FIT_SILHOUETTE_MIN` ⇒ keep clip-1 crops and **refit on clip
-    2** with combined samples; never refit after committing (re-running KMeans could swap
-    the 0/1 labels mid-match). Commits the pkl + resolves team names.
+    2** with combined samples; never refits **the same committed fit** afterwards
+    (re-running KMeans mid-match on unchanged jerseys could swap the 0/1 labels and
+    corrupt stats). A genuinely new `fit_generation` (mid-match colour change) is the one
+    case where a full refit is wanted — that goes through `reset_for_new_generation`
+    below, not `ensure_fit`'s own refit-once logic. Commits the pkl, writes the
+    `fit_meta.json` sidecar (`_write_fit_meta`), and resolves team names
+    (`_resolve_team_names`, which also sets `team_a_cluster_id`).
+  - `_resolve_team_names(clf, crops)` — maps the two KMeans clusters to the caller's team
+    names/colours (`clf.resolve_team_names`) and records which cluster resolved to
+    `team_a_name` as `self.team_a_cluster_id` (`None` if resolution wasn't attempted or
+    failed — falls back to raw cluster order). On a re-fit (`fit_generation > 1`) a
+    resolution failure is logged at ERROR, since it silently leaves `team_a`/`team_b`
+    orientation stale until the next successful re-fit — a documented v1 limitation.
+  - `_write_fit_meta()` / `_load_fit_meta()` — persist/restore `{fit_generation,
+    team_a_cluster_id}` as `fit_meta.json` next to `team_siglip.pkl`, so a disk-reloaded
+    session (worker restart, or a late clip after idle eviction) recovers them instead of
+    reverting to generation 1 / unresolved orientation. A missing/corrupt sidecar degrades
+    to that same fallback rather than raising.
+  - `reset_for_new_generation(n)` — the mid-match colour-change reset: deletes
+    `team_siglip.pkl` + `fit_meta.json`, clears `team_clf`/sets `fit_status = "pending"`/
+    clears `_fit_crops_clip1`, clears `gk_det`/`_gk_colour_invalid`, clears
+    `team_a_cluster_id`, sets `fit_generation = n` — i.e. starts the team/GK fit over as
+    if this were clip 1 again, under the new generation. `tracker`/`ball_tracker`/
+    `carrier_eng`/`pass_track`/`proc_idx`/`n_events_seen`/`last_written`/
+    `carryover_travel_frames` are **left untouched** so an in-flight pass isn't lost.
   - `ensure_gk_ready()` — constructs `self.gk_det` (`GoalkeeperDetector`) once
     `db.get_gk_colours(match_id)` returns both reference colours; no-op if already
     constructed or if construction previously failed (`ValueError` on an unparseable
@@ -159,12 +211,20 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
     GK classification is an overlay on top of the core possession stats, called at the
     top of every `clip_processor.process_clip(...)`.
   - `split_adjustment(n)` / `finish_clip(half, minute)` / `new_events()` — the boundary
-    bookkeeping used by `clip_processor`.
-- **`MatchSessionManager.get_or_create(match_id, ruleset)`** (gained the `ruleset` param)
-  — `dict[match_id → MatchSession]` with idle eviction. `ruleset` is only used when
-  creating a new session; an existing session keeps whatever ruleset it was created with
-  (a match's ruleset is fixed for its lifetime, enforced by `db.ensure_match` only setting
-  it on `INSERT`).
+    bookkeeping used by `clip_processor`. `finish_clip` also snapshots the current
+    `team_a_cluster_id` into `last_written_team_a_cluster_id` — "the orientation the just-
+    written row was written under" — for a future clip's boundary correction to reorient
+    against (see `clip_processor.py` / `stats.orient_for_team_a` below).
+- **`MatchSessionManager.get_or_create(match_id, ruleset, want_generation=None)`** —
+  `dict[match_id → MatchSession]` with idle eviction, now returns `(session, just_reset)`.
+  `ruleset` is only used when creating a new session; an existing session keeps whatever
+  ruleset it was created with (a match's ruleset is fixed for its lifetime, enforced by
+  `db.ensure_match` only setting it on `INSERT`). `want_generation` (the worker passes
+  `db.get_fit_generation`'s current value) is compared against the session's own
+  `fit_generation` — new, cached, and disk-reloaded sessions alike; a stale
+  `fit_meta.json` sidecar next to an up-to-date pkl is caught here too. If
+  `want_generation` is higher, `reset_for_new_generation` runs before the session is
+  returned and `just_reset=True`.
 - `collect_crops(clip_path, player_det, sample_every, ruleset)` (gained the `ruleset`
   param) uses the team classifier's **static** crop helpers (`_torso_crop`, `_is_sharp`),
   now parametrized by `ruleset.torso_ratio`/`min_crop_px`/`blur_threshold`; it does
@@ -187,11 +247,18 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - Splits boundary-spanning adjustments via `session.split_adjustment`: the prior-minute
   share becomes a `PriorCorrection` (one UPDATE to the previous row), the rest hits this
   minute's counters.
-- Builds `EventRow`s from `session.new_events()`; returns a `ClipResult`
-  (`minute_row`, `correction`, `events`). `clip_duration_seconds` (the client-supplied
-  clip length) is threaded straight through into `MinuteCounters.to_minute_row(...)` and
-  stored on `MinuteRow.clip_duration_seconds` — used only for the CSV export
-  (`scripts/get_csv.py`), not for any pipeline math.
+- Builds `EventRow`s from `session.new_events()`; assembles a `ClipResult`
+  (`minute_row`, `correction`, `events`) and then returns
+  `stats.orient_for_team_a(result, session.team_a_cluster_id,
+  correction_team_a_cluster_id)` — colour-anchored orientation applied once here at write
+  time. `session.team_a_cluster_id` orients this clip's own row + events;
+  `correction_team_a_cluster_id` (captured as `session.last_written_team_a_cluster_id` at
+  the moment the `PriorCorrection` is built, before `finish_clip` overwrites it) orients
+  the boundary correction, which targets a *different*, already-written row that may have
+  been written under a different orientation.
+- `clip_duration_seconds` (the client-supplied clip length) is threaded straight through
+  into `MinuteCounters.to_minute_row(...)` and stored on `MinuteRow.clip_duration_seconds`
+  — used only for the CSV export (`scripts/get_csv.py`), not for any pipeline math.
 - **Does NOT** render, write SQL, or send callbacks — it returns plain data the worker
   persists. Per-stage timing is logged at DEBUG.
 
@@ -208,23 +275,57 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - `MinuteCounters` does the per-minute bucketing (`add_label`), correction
   (`apply_adjustment` — `flip_to`/`drop`, clamped), and event tallying (`count_event`).
 - Helpers: `split_adjustment(n, carryover)`, `is_expected(...)` (ordering guard),
-  `build_payload(...)` (the flat advance-stats body; maps internal `team_a`/`team_b`
-  counters onto the unchanged wire keys `*_a`/`*_b` — cluster id 0 → team_a → a).
+  `build_payload(match_id, half, minute, revision, sums)` (the flat advance-stats body;
+  maps internal `team_a`/`team_b` counters onto the unchanged wire keys `*_a`/`*_b`). The
+  old `team_id_to_name` param was **removed** — orientation is now resolved upstream at
+  write time, so `build_payload` just sums already-oriented rows.
+- `orient_for_team_a(result, team_a_cluster_id, correction_team_a_cluster_id=<same as
+  row>)` — reorders a `ClipResult`'s `minute_row` counters, `events` (`from_team`/
+  `to_team`), and `correction` (`team_id`) so `team_a`/`0` always means the cluster whose
+  resolved jersey colour matches `team_a_colour`. Each part is a **no-op** unless its
+  cluster id is `1` (only happens when a re-fit's KMeans landed the clusters in the
+  opposite order) — a cluster id of `None` (resolution not run / failed) is also a no-op,
+  falling back to raw cluster order. The `correction` is reoriented against
+  `correction_team_a_cluster_id` (the orientation the *target* row was written under), not
+  the current clip's, because the two can differ across a mid-match re-fit. Must be
+  applied at write time (from `clip_processor`), never at `cumulative_read`/`build_payload`
+  time — a mid-match swap must not retroactively reorder already-summed prior minutes.
 - Deliberately torch/boxmot/pyodbc-free so the correctness-critical math is testable
   (`tests/test_stats.py`).
 
 ## `db.py` (Azure SQL via pyodbc)
 - **Cumulative-on-read:** `minute_stats` stores raw per-minute counters; `cumulative_read`
-  `SUM()`s over rows ≤ the current minute. Never stores cumulative numbers.
-- **`write_clip_result(...)` = one transaction:** apply prior correction (revision += 1) →
-  upsert this minute row (PK = `(match_id, half, minute)` ⇒ replay overwrites, now also
-  storing `clip_duration_seconds`) → insert events → advance match progress → insert the
-  **outbox** row with a fresh cumulative payload. Rolls back on any error.
+  `SUM()`s over rows ≤ the current minute **and `superseded = 0`**. Never stores
+  cumulative numbers.
+- **`write_clip_result(conn, row, correction, events)` = one transaction:** apply prior
+  correction (revision += 1) → upsert this minute row (PK = `(match_id, half, minute)` ⇒
+  replay overwrites, storing `clip_duration_seconds`) → insert events → advance match
+  progress → insert the **outbox** row with a fresh cumulative payload. Rolls back on any
+  error. The `team_id_to_name` parameter was **removed** — team orientation is applied
+  upstream by `clip_processor` (`stats.orient_for_team_a`) before rows reach this function.
 - Match upsert (`ensure_match` — takes `team_a/b_name`, `team_a/b_colour`,
-  `team_a/b_gk_colour` and `ruleset`;
-  `ruleset` is written only on the `INSERT` branch, never the `UPDATE` branch, so it's
-  fixed at match creation; COALESCE so later clips can't overwrite name/colour fields),
-  atomic minute claim (`claim_next_minute` via `UPDATE...OUTPUT`), `minute_exists`,
+  `team_a/b_gk_colour` and `ruleset`). `ruleset` is written only on the `INSERT` branch,
+  never `UPDATE`, so it's fixed at match creation. On `UPDATE`: names stay COALESCE
+  (fill-in-only); the four **colour** columns are now `COALESCE(?, existing)` — a supplied
+  value **overwrites**. When a supplied colour genuinely differs from the stored one
+  (compared after `_normalise_colour`: lowercase, `#`-stripped, trimmed — so `#FF6600` ==
+  `ff6600`), `fit_generation` is bumped by 1 (once per call; NULL→value first-fill is not
+  a "change").
+- `get_fit_generation(conn, match_id)` — current `matches.fit_generation` (`1` for a
+  never-bumped or missing row). The worker reads this each clip and passes it as
+  `want_generation` to `MatchSessionManager.get_or_create`.
+- `mark_minutes_superseded(conn, match_id, upto_half, upto_minute)` — sets `superseded = 1`
+  on every `minute_stats` **and** `events` row through `(upto_half, upto_minute)`
+  inclusive; idempotent (only touches `superseded = 0` rows); returns total rowcount;
+  commits. Called by the worker right after a generation-triggered session reset. (Only
+  `minute_stats.superseded` is currently consulted on read — `cumulative_read`;
+  `events.superseded` is set for consistency / future use.)
+- `bump_fit_generation(conn, match_id, **name_colour_fields)` — backs
+  `POST /api/matches/{id}/reset-fit`: unconditionally `fit_generation += 1` and overwrites
+  any of the 6 name/colour fields supplied (plain `COALESCE(?, existing)`, not the
+  auto-detect split `ensure_match` uses). Returns the new generation, or `None` if the
+  match row is absent (→ `404`). Commits.
+- Also: atomic minute claim (`claim_next_minute` via `UPDATE...OUTPUT`), `minute_exists`,
   `get_match_progress`, `get_match_ruleset` (returns `"classic"` if the row is somehow
   missing — should not happen, callers `ensure_match()` first), `get_team_specs` (only if
   both teams have name **and** colour), `get_gk_colours` (only if **both** GK colours are
@@ -305,3 +406,7 @@ row to `post_processing` and does **not** emit the live advance-stats callback.
   callback. The `events` table is the future highlight-reel source.
 - No multi-worker scaling / distributed locking — single worker, one clip at a time.
 - No contested-possession or dribble events (matches the pipeline's design).
+- No automatic recovery if jersey-colour resolution fails on a mid-match re-fit
+  (`fit_generation > 1`): the failure is logged at ERROR and processing continues with raw
+  cluster order, so `team_a`/`team_b` orientation can be wrong for those minutes until the
+  next successful re-fit — a documented v1 limitation.

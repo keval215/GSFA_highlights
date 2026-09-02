@@ -16,8 +16,14 @@ from service.stats import (
     LBL_OOF,
     LBL_TEAM_A,
     LBL_TEAM_B,
+    ClipResult,
+    EventRow,
     MinuteCounters,
+    MinuteRow,
+    PriorCorrection,
+    build_payload,
     is_expected,
+    orient_for_team_a,
     split_adjustment,
 )
 
@@ -136,3 +142,132 @@ def test_next_minute_same_half():
 def test_halftime_rollover():
     assert is_expected(1, 20, 2, 1)
     assert not is_expected(1, 20, 2, 2)
+
+
+# ---------------------------------------------------------------------------
+# build_payload — no orientation logic, no team_id_to_name param (dead code
+# removed; orientation is applied once, at write time, by orient_for_team_a)
+# ---------------------------------------------------------------------------
+
+def test_build_payload_maps_internal_names_to_wire_keys():
+    sums = {
+        "frames_team_a": 10, "frames_team_b": 20, "frames_loose": 1, "frames_oof": 2,
+        "passes_completed_team_a": 3, "passes_completed_team_b": 4,
+        "interceptions_team_a": 5, "interceptions_team_b": 6,
+        "ball_lost_team_a": 7, "ball_lost_team_b": 8,
+    }
+    payload = build_payload("m1", 1, 1, 0, sums)
+    assert payload == {
+        "frames_a": 10, "frames_b": 20, "frames_loose": 1, "frames_oof": 2,
+        "passes_completed_a": 3, "passes_completed_b": 4,
+        "interceptions_a": 5, "interceptions_b": 6,
+        "ball_lost_a": 7, "ball_lost_b": 8,
+    }
+
+
+# ---------------------------------------------------------------------------
+# orient_for_team_a — colour-anchored reorientation at write time
+# ---------------------------------------------------------------------------
+
+def _clip_result(**row_over):
+    row = MinuteRow(
+        match_id="m1", half=1, minute=1,
+        frames_team_a=10, frames_team_b=20,
+        passes_completed_team_a=1, passes_completed_team_b=2,
+        interceptions_team_a=3, interceptions_team_b=4,
+        ball_lost_team_a=5, ball_lost_team_b=6,
+        **row_over,
+    )
+    correction = PriorCorrection(half=1, minute=0, kind="flip_to", team_id=0, frames=2)
+    events = [EventRow(half=1, minute=1, frame_idx=9, kind="pass", from_team=0, to_team=None)]
+    return ClipResult(minute_row=row, correction=correction, events=events)
+
+
+def test_orient_noop_when_cluster_0_is_team_a():
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=0)
+    assert oriented is result   # true no-op, not just equal
+
+
+def test_orient_noop_when_cluster_id_unresolved():
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=None)
+    assert oriented is result
+
+
+def test_orient_swaps_minute_row_counters_when_cluster_1_is_team_a():
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=1)
+    row = oriented.minute_row
+    assert (row.frames_team_a, row.frames_team_b) == (20, 10)
+    assert (row.passes_completed_team_a, row.passes_completed_team_b) == (2, 1)
+    assert (row.interceptions_team_a, row.interceptions_team_b) == (4, 3)
+    assert (row.ball_lost_team_a, row.ball_lost_team_b) == (6, 5)
+    # Original result is untouched (a new ClipResult is returned).
+    assert result.minute_row.frames_team_a == 10
+
+
+def test_orient_swaps_event_team_ids():
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=1)
+    evt = oriented.events[0]
+    assert evt.from_team == 1     # was 0
+    assert evt.to_team is None    # non-0/1 values pass through unchanged
+
+
+def test_orient_swaps_correction_team_id():
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=1)
+    assert oriented.correction.team_id == 1   # was 0
+
+
+def test_orient_handles_no_correction():
+    result = ClipResult(minute_row=_clip_result().minute_row, correction=None, events=[])
+    oriented = orient_for_team_a(result, team_a_cluster_id=1)
+    assert oriented.correction is None
+
+
+# ---------------------------------------------------------------------------
+# orient_for_team_a — correction gets its OWN orientation, independent of
+# this clip's team_a_cluster_id (correction.py review finding: a
+# PriorCorrection targets the PREVIOUS minute's row, which was written under
+# whatever orientation was active back then, not necessarily today's)
+# ---------------------------------------------------------------------------
+
+def test_correction_orientation_defaults_to_row_orientation_when_omitted():
+    # Backward-compatible default: caller not tracking the two separately.
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=1)
+    assert oriented.correction.team_id == 1
+    assert oriented.minute_row.frames_team_a == 20
+
+
+def test_correction_orientation_independent_of_row_when_row_unresolved():
+    # This clip's own row is unresolved (team_a_cluster_id=None → not
+    # flipped) but the correction targets a PRIOR row that WAS written under
+    # cluster 1 == team_a — the correction alone must flip.
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=None,
+                                 correction_team_a_cluster_id=1)
+    assert oriented.minute_row.frames_team_a == 10   # row itself untouched
+    assert oriented.correction.team_id == 1           # was 0 — correction flipped
+
+
+def test_correction_orientation_independent_of_row_when_correction_unresolved():
+    # Mirror case: this clip's row IS reoriented (cluster 1 == team_a today)
+    # but the prior row the correction targets was written before colour
+    # resolution succeeded (correction_team_a_cluster_id=None) — the
+    # correction must stay in raw cluster order.
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=1,
+                                 correction_team_a_cluster_id=None)
+    assert oriented.minute_row.frames_team_a == 20   # row flipped
+    assert oriented.correction.team_id == 0           # correction NOT flipped
+
+
+def test_correction_orientation_both_flip_when_both_resolved_to_cluster_1():
+    result = _clip_result()
+    oriented = orient_for_team_a(result, team_a_cluster_id=1,
+                                 correction_team_a_cluster_id=1)
+    assert oriented.minute_row.frames_team_a == 20
+    assert oriented.correction.team_id == 1

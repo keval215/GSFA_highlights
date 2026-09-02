@@ -131,7 +131,18 @@ class Worker:
                       msg.minute, config.ORDERING_RETRIES, last_half, last_minute)
 
         ruleset  = get_ruleset(db.get_match_ruleset(self.conn, msg.match_id))
-        session  = self.manager.get_or_create(msg.match_id, ruleset)
+        want_gen = db.get_fit_generation(self.conn, msg.match_id)
+        session, just_reset = self.manager.get_or_create(msg.match_id, ruleset, want_gen)
+        if just_reset:
+            # Team/GK colours changed since this session's last fit (auto-detected
+            # by db.ensure_match, or forced via POST /api/matches/{id}/reset-fit).
+            # Exclude everything processed under the stale fit from cumulative
+            # stats going forward — do NOT touch last_half_processed/
+            # last_minute_processed, only the ordering pointer, not superseded.
+            n_superseded = db.mark_minutes_superseded(self.conn, msg.match_id, last_half, last_minute)
+            log.warning("[%s] team colours changed → fit generation %d; superseded %d "
+                        "prior minute_stats/events row(s); will re-fit on this clip",
+                        msg.match_id, want_gen, n_superseded)
         job_dir  = config.JOBS_DIR / msg.match_id
         clip_path = job_dir / f"{msg.half}_{msg.minute}.mp4"
         self.blob.download_to(msg.blob_path, clip_path)
@@ -148,9 +159,9 @@ class Worker:
                               clip_blob_path=msg.blob_path)
 
         # --- One SQL transaction (minute row + correction + events + outbox)
-        team_names = session.team_clf.team_id_to_name if session.team_clf else None
-        db.write_clip_result(self.conn, result.minute_row, result.correction,
-                             result.events, team_names)
+        # Orientation is already applied (clip_processor.process_clip →
+        # stats.orient_for_team_a) — this write needs no team-name/colour logic.
+        db.write_clip_result(self.conn, result.minute_row, result.correction, result.events)
 
         self._last_clip_seconds = round(time.monotonic() - t_start, 1)
         log.info("clip %s h%d m%d processed in %.1fs (events=%d, correction=%s)",
@@ -189,7 +200,10 @@ class Worker:
         # Own session, constructed directly (never through MatchSessionManager,
         # never stored there) — isolated from the live-clip path for this match
         # and never reused across attempts, so every run starts from clean
-        # tracker/ball/carrier/pass-FSM state.
+        # tracker/ball/carrier/pass-FSM state. It always fits fresh (fit_status
+        # starts "pending"), so it never consults or participates in the
+        # fit_generation reset check above — a colour change detected here by
+        # ensure_match() has no separate effect on this one-shot run.
         session = MatchSession(msg.match_id, self.models, ruleset)
         job_dir = config.JOBS_DIR / msg.match_id
         video_path = job_dir / "post_processing.mp4"

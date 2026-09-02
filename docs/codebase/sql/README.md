@@ -38,8 +38,20 @@ These explain *why* the tables look the way they do (see also `service/db.py`):
 - `matches.last_half_processed` / `last_minute_processed` — drive the worker's ordering
   guard (`is_expected`).
 - `matches.team_a/b_name` + `team_a/b_colour` — used for cluster→team-name resolution
-  (`db.get_team_specs` returns them only if **all four** are present). Convention: CV
-  cluster id 0 → `team_a`, cluster id 1 → `team_b` (renamed from `team0`/`team1` in v6).
+  (`db.get_team_specs` returns them only if **all four** are present). Baseline convention
+  is CV cluster id 0 → `team_a`, cluster id 1 → `team_b` (renamed from `team0`/`team1` in
+  v6), but the actual `team_a`/`team_b` column assignment is **colour-anchored at write
+  time** — `stats.orient_for_team_a` reorders each minute's counters so `team_a` follows
+  the cluster whose resolved jersey colour matches `team_a_colour`, not the raw KMeans
+  label. Names are fill-in-only (COALESCE); the four colour columns are overwritten on
+  every `POST /api/clips` request (see `fit_generation` below).
+- `matches.fit_generation` (`INT NOT NULL DEFAULT 1`) — bumped by `db.ensure_match` when
+  an incoming team/GK colour genuinely differs from the stored one, or unconditionally by
+  `POST /api/matches/{id}/reset-fit` (`db.bump_fit_generation`). The worker compares it to
+  the live `MatchSession`'s own generation (persisted in a `fit_meta.json` sidecar next to
+  the team-fit pkl) and, when the DB is ahead, discards the stale team/GK fit and re-fits
+  from the next clip. See [service/README.md](../service/README.md) and
+  [docs/API.md](../../API.md) "Mid-match colour changes".
 - `matches.team_a/b_gk_colour` — goalkeeper reference jersey colours, same hex/CSS-name
   format as `team_a/b_colour`. Columns are `NULL`-able (rows from before these fields
   existed), but the API now **requires** both on every request, so any match created after
@@ -60,6 +72,12 @@ These explain *why* the tables look the way they do (see also `service/db.py`):
   column existed are `NULL`. Used only by the CSV export (`scripts/get_csv.py`) for
   duration/pass-density math, not by the pipeline.
 - `minute_stats.revision` — incremented by retroactive corrections.
+- `minute_stats.superseded` / `events.superseded` (`BIT NOT NULL DEFAULT 0`) — set to `1`
+  by `db.mark_minutes_superseded` on every row up to the last processed minute when a
+  mid-match `fit_generation` bump forces a team-classifier re-fit. `db.cumulative_read`
+  adds `AND superseded = 0`, so old-colour minutes stop contributing to the running totals
+  in advance-stats callbacks. Only `minute_stats.superseded` is read today;
+  `events.superseded` is maintained for consistency / future use.
 - `post_processing.match_id` — the whole-match primary key; there is no half/minute or
   revision column because the table represents one processed match file.
 - `events.kind` — `pass | interception | ball_lost` (mapped from FSM kinds via
@@ -90,6 +108,12 @@ existing DB, each to be run once before deploying the corresponding service vers
   script + rollback in `sql/migrations/v6_team_a_b_rename.sql`). Pure renames, no data
   moves; PK/indexes unaffected. Run with the Azure Queue drained, before deploying the
   v6 api + worker. The outbound advance-stats callback body is **not** changed.
+- **v7** — mid-match team/GK colour-change support (Approach A). Adds
+  `matches.fit_generation INT NOT NULL DEFAULT 1`, `minute_stats.superseded BIT NOT NULL
+  DEFAULT 0`, and `events.superseded BIT NOT NULL DEFAULT 0` (three inline `ALTER TABLE`
+  snippets in `schema.sql`). DEFAULTs backfill existing rows to "never bumped" / "not
+  superseded". Run once before deploying the service version that bumps `fit_generation`
+  and filters on `superseded`.
 
 Two older additions predate this inline-migration-note convention and have **no**
 `ALTER`/`CREATE` snippet in `schema.sql`, unlike v2–v4 above:

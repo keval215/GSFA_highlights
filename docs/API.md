@@ -80,12 +80,44 @@ Upload a 60-second clip for processing. Returns immediately (~1–2 s); processi
 | `team_b_gk_colour` | string | **yes** | Goalkeeper jersey colour for team B. |
 | `ruleset` | string | no | `"classic"` (default) or `"futsal"` — selects the sport-tuning profile (`rulesets/`). Only used on the **first** request for a `match_id` (creates the match row); later requests ignore it — a match's ruleset is fixed for its lifetime. Unknown value ⇒ `422`. Omit the field (or send `classic`) to get classic; senders that still pass `ruleset=futsal` explicitly keep getting futsal. |
 
-> **v6 field rename + required fields:** the inbound form fields were `team0_*` / `team1_*` before v6 and are now `team_a_*` / `team_b_*` (convention: CV cluster id 0 → team_a, 1 → team_b). Hard cutover — the old names are no longer accepted. **All six `team_*` fields (names, outfield colours, GK colours) are now required** — a missing *or blank* one is a `422`. The **outbound** advance-stats callback body is unchanged (still `frames_a` / `frames_b` / …).
+> **v6 field rename + required fields:** the inbound form fields were `team0_*` / `team1_*` before v6 and are now `team_a_*` / `team_b_*` (convention: CV cluster id 0 → team_a, 1 → team_b, subject to colour-anchored reorientation — see "Mid-match colour changes" below). Hard cutover — the old names are no longer accepted. **All six `team_*` fields (names, outfield colours, GK colours) are now required** — a missing *or blank* one is a `422`. The **outbound** advance-stats callback body is unchanged (still `frames_a` / `frames_b` / …).
 
-All six `team_*` fields are required on **every** request, not just the first clip. The
-first request's values initialise the `matches` row; on later requests they are still
-required but ignored (`db.ensure_match` only fills `NULL`s and never overwrites, and cannot
-change the `ruleset`). The server stores `clip_duration_seconds` exactly as sent by the client.
+All six `team_*` fields are required on **every** request, not just the first clip. Names
+(`team_a_name`/`team_b_name`) are still fill-in-only — the first request's non-blank value
+sticks and later requests are ignored for those two fields (`db.ensure_match` COALESCEs
+them). `ruleset` is likewise fixed at match creation. The four **colour** fields
+(`team_a_colour`/`team_b_colour`/`team_a_gk_colour`/`team_b_gk_colour`) are **not**
+fill-in-only any more — every request's non-blank colour value **overwrites** the stored
+one, and `db.ensure_match` bumps `matches.fit_generation` when a supplied colour genuinely
+differs (case/`#`-insensitive comparison) from what was already stored. This is the
+mid-match jersey/GK-colour-change path — see "Mid-match colour changes" below. The server
+stores `clip_duration_seconds` exactly as sent by the client.
+
+### Mid-match colour changes (`fit_generation`)
+
+Team/GK jerseys can genuinely change mid-match (colour kit swap, GK substitution in a
+different-coloured kit). `matches.fit_generation` (starts at `1`) tracks this:
+
+- **Automatic:** any `POST /api/clips` or `POST /post-processing` request whose
+  `team_a_colour`/`team_b_colour`/`team_a_gk_colour`/`team_b_gk_colour` genuinely differs
+  from the stored value bumps `fit_generation` by 1 (`db.ensure_match`). A colour going
+  from unset to set on the *first* request is not a "change" and never bumps it. (The
+  whole-match `/post-processing` run itself always fits fresh and ignores `fit_generation`;
+  a bump it causes only affects the next live `/api/clips` clip for that match.)
+- **Manual override:** `POST /api/matches/{match_id}/reset-fit` (below) bumps it
+  unconditionally, for forcing a re-fit without an actual colour change.
+- **Effect:** the worker compares the DB's `fit_generation` against the live
+  `MatchSession`'s own (persisted next to the team-fit pkl); when the DB is ahead, it
+  discards the session's team classifier + goalkeeper detector and re-fits from the very
+  next clip processed for that match (as if it were clip 1 again) — tracker / ball /
+  carrier / pass-FSM state is **not** reset. Every previously-written `minute_stats` and
+  `events` row up to the last processed minute is flagged `superseded`, and
+  `cumulative_read` (and therefore every subsequent advance-stats callback body) excludes
+  `superseded` rows — old-colour and new-colour stats are never summed together. Minutes
+  processed under the new fit orient their `team_a`/`team_b` columns to the cluster whose
+  resolved jersey colour matches `team_a_colour` (`service/stats.py::orient_for_team_a`),
+  independent of which raw KMeans cluster id that turns out to be, so a mid-match label
+  flip never corrupts which team a given counter belongs to.
 
 **202 Accepted — new clip enqueued:**
 
@@ -164,6 +196,49 @@ re-upload (see `service/README.md`'s worker section).
   "match_id": "match_abc123"
 }
 ```
+
+---
+
+### POST /api/matches/{match_id}/reset-fit
+
+Manual override for the automatic colour-change detection above: forces a re-fit on this
+match's next processed clip regardless of whether any supplied colour actually differs
+from what's stored — e.g. an operator noticed a bad team fit and wants it redone without
+waiting for (or in lieu of) a genuine jersey-colour change.
+
+**Content-Type:** `application/json`, body optional.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `team_a_name` | string | no | If supplied, overwrites the stored name (not COALESCE — unlike `POST /api/clips`). |
+| `team_b_name` | string | no | Same. |
+| `team_a_colour` | string | no | If supplied, overwrites the stored colour. |
+| `team_b_colour` | string | no | Same. |
+| `team_a_gk_colour` | string | no | Same. |
+| `team_b_gk_colour` | string | no | Same. |
+
+All six fields default to `null` (omitted ⇒ keep the stored value). A field that is
+**present but blank/whitespace-only** is a `422` (distinct from `POST /api/clips`, where
+omitting a required field is also a `422` — here omission is fine, only an explicit blank
+string is rejected, since a silently-blanked colour would disable colour→team resolution
+and GK colour-matching until someone notices). `fit_generation` is bumped **unconditionally**
+regardless of whether any field was supplied or actually changed.
+
+**200 OK:**
+
+```json
+{
+  "match_id": "match_abc123",
+  "fit_generation": 3
+}
+```
+
+**Error responses:**
+
+| Status | Condition |
+|---|---|
+| 404 | `match_id` not found (the match must already exist — this endpoint does not create one) |
+| 422 | a supplied field is present but blank/whitespace-only |
 
 ---
 
@@ -261,7 +336,7 @@ If `CALLBACK_URL` or `SUPER_ADMIN_KEY` is unset, rows stay `pending` in `callbac
 }
 ```
 
-- All counters are **running totals from minute 1 up to and including the current minute** — not deltas for this clip alone. Because each call overwrites, the duel's `advance_stats` always reflects the latest cumulative state.
-- Team mapping is **positional**: CV cluster id `0 → team_a → a`, cluster id `1 → team_b → b` (the same 0/1 the KMeans team fit assigns). No jersey-name resolution is applied to the body. The wire keys keep their historical `_a` / `_b` suffixes even though the internal/SQL columns are now `team_a` / `team_b` (`service/stats.py::build_payload` does the mapping).
+- All counters are **running totals from minute 1 up to and including the current minute** — not deltas for this clip alone. Because each call overwrites, the duel's `advance_stats` always reflects the latest cumulative state. Rows flagged `superseded` (see "Mid-match colour changes" above) are excluded from the sum, so a mid-match re-fit never blends old-colour and new-colour minutes into one total.
+- Team mapping is `team_a → a`, `team_b → b`. Which CV cluster id feeds `team_a` at write time is **colour-anchored**, not fixed at `0` — `service/stats.py::orient_for_team_a` reorders each minute's counters (and events, and any prior-minute correction) so `team_a` always means "the cluster whose resolved jersey colour matches `team_a_colour`", independent of which raw KMeans cluster id the fit happened to assign. This matters once `fit_generation` > 1: a re-fit's KMeans can land the two clusters in the opposite order from before, and without this reorientation a mid-match colour change would silently swap which team's stats accumulate under `_a` vs `_b`. `build_payload` itself does no team-name/orientation logic any more — it only sums already-oriented `minute_stats` rows. The wire keys keep their historical `_a` / `_b` suffixes even though the internal/SQL columns are `team_a` / `team_b`.
 - A retroactive correction to a prior minute simply produces a fresh cumulative body on the next POST, which overwrites with the corrected totals.
 - Possession percentage is derived by the receiver: `frames_a / (frames_a + frames_b + frames_loose)`.

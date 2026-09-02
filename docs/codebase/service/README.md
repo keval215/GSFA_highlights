@@ -260,7 +260,7 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   into `MinuteCounters.to_minute_row(...)` and stored on `MinuteRow.clip_duration_seconds`
   — used only for the CSV export (`scripts/get_csv.py`), not for any pipeline math.
 - **Does NOT** render, write SQL, or send callbacks — it returns plain data the worker
-  persists. Per-stage timing is logged at DEBUG.
+  persists. Per-stage timing is logged at INFO (one line per processed clip).
 
 ## `post_processing/post_processing.py`
 - Thin whole-match wrapper around the existing pipeline. It reuses `process_clip(...)`

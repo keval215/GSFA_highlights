@@ -4,8 +4,9 @@ service/logging_setup.py — one logging configuration for both entry points.
 Both the api (service/api.py) and the worker (service/worker.py) want the same
 three things:
   1. Timestamps in IST (the team reads logs in Indian time, not the container's UTC).
-  2. The Azure SDK's per-request HTTP logging policy silenced (it logs every
-     Blob/Queue request+response at INFO and floods the log otherwise).
+  2. Noisy third-party HTTP loggers silenced (the Azure SDK logs every
+     Blob/Queue request+response at INFO; urllib3 logs every connection at
+     DEBUG) so they don't flood the log.
   3. Our own gsfa.* lines at LOG_LEVEL (default INFO).
 
 Call configure() once at startup (api: at import; worker: in main()).
@@ -48,3 +49,7 @@ def configure(component: str) -> None:
     # The Azure SDK's HTTP logging policy logs every Blob/Queue request+response at
     # INFO, which floods the log (especially the api on each clip upload). Cap it.
     logging.getLogger("azure").setLevel(logging.WARNING)
+
+    # urllib3 logs every connection + retry at DEBUG; with LOG_LEVEL=DEBUG this
+    # floods the log during callbacks / blob I/O. Keep it at WARNING regardless.
+    logging.getLogger("urllib3").setLevel(logging.WARNING)

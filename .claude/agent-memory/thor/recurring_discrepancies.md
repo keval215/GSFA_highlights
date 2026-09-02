@@ -4,6 +4,22 @@ description: Known code/doc discrepancies found during syncs that were deliberat
 type: project
 ---
 
+**2026-09-02 — `docs/azure_deploy.md` deletion confirmed intentional by user.** Found via
+`git status` as an uncommitted `D` (deleted-but-not-staged) while answering an unrelated
+LOG_LEVEL/VM question. Flagged it as possibly-accidental since agent memory recorded a
+full rewrite of that file on 2026-08-26. **User confirmed 2026-09-02: deliberate deletion
+("that was an old doc i deleted it") — not a bug.** Do not re-flag the deletion itself.
+**Still open for the next `/update-doc` run:** everything that *links to* the file is now
+stale and needs updating once this deletion is committed — `CLAUDE.md`'s doc map row
+(`| Azure deployment | docs/azure_deploy.md |`), `docs/codebase/README.md`'s index,
+`docs/codebase/infra/README.md`'s "Deploy/runbook" section, `docs/API.md`'s references,
+`.claude/commands/update-doc.md` and `.claude/agents/thor.md` (both mention it as part of
+the doc map / Mode-3 routing), plus this agent's own `MEMORY.md`/`docs_last_synced.md`/
+`supermemory_index.md` entries about it. None of these were edited in this pass — no
+`/update-doc` trigger was given; recording the scope here so the next sync doesn't have to
+rediscover it. Whether VM-deploy info moves elsewhere (e.g. folded into
+`infra/README.md`) or is simply dropped is the user's call, not something to assume.
+
 **2026-08-26 discrepancy-fix pass (targeted, not a full `/update-doc` delta sync):**
 fixed the two doc-only items below — `docs/azure_deploy.md` was rewritten in full to
 match the actual `service/` (api+worker) architecture, and `docs/codebase/sql/README.md`'s

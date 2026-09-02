@@ -185,7 +185,7 @@ def process_clip(
 
     if n_processed:
         total_s = sum(t.values()) / 1000.0
-        log.debug(
+        log.info(
             "[%s] h%d m%d timing: %d frames | total %.1fs | per-frame ms: "
             "decode=%.1f player_det=%.1f team_clf=%.1f ball_det=%.1f "
             "tracker=%.1f ball_kalman=%.1f carrier=%.1f pass=%.1f",

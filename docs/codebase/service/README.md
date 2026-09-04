@@ -18,7 +18,7 @@ See also: [docs/API.md](../../API.md) (HTTP contract + env vars) and
 | `api.py` | FastAPI ingest (`POST /api/clips`, `POST /post-processing`, `GET /health`, `GET /metrics`) | no |
 | `worker.py` | Queue poll loop; orchestrates one clip end-to-end | yes |
 | `session.py` | `MatchSession` (cross-clip state) + team-fit logic + session manager | yes |
-| `clip_processor.py` | Drives ONE clip through the pipeline (batched two-pass) | yes |
+| `clip_processor.py` | Drives ONE clip through the pipeline (batched two-pass; opt-in threaded producer/consumer) | yes |
 | `stats.py` | Dependency-free data shapes + per-minute counting/correction logic | — |
 | `db.py` | pyodbc layer for Azure SQL (the per-clip transaction) | — |
 | `blob.py` | Azure Blob wrapper (upload/download/delete clips) | — |
@@ -80,7 +80,8 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   when that ruleset is actually used. `CLASSIC_PLAYER_WEIGHTS` is **not set on any
   deployment yet** — selecting `ruleset=classic` today fails fast at model load.
 - Optional tunables with defaults: `TARGET_PROCESS_FPS` (15), `CMC_METHOD` (ecc),
-  `CLIP_BATCH_WINDOW` (16), `FIT_SAMPLE_EVERY` (**30**, was 5), `FIT_SILHOUETTE_MIN`
+  `CLIP_BATCH_WINDOW` (16), `CLIP_PIPELINE_THREADED` (**false** — opt-in worker knob,
+  see `clip_processor.py` below), `FIT_SAMPLE_EVERY` (**30**, was 5), `FIT_SILHOUETTE_MIN`
   (0.20), queue/ordering/callback retry knobs, `SESSION_IDLE_EVICT_S`, paths, etc.
   `FIT_SAMPLE_EVERY` was raised from 5 to 30 in the "added fixes to stop the oom error"
   commit (a separate, closely-following commit from the docker-compose memory limits in
@@ -131,7 +132,9 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
 - Writes a heartbeat each loop (GPU visibility/mem, last clip seconds, queue depth →
   seconds-behind-live, active matches, `last_post_processing_error`).
 - **Does NOT** parallelise across clips — one clip at a time (simple, ~1 concurrent match
-  expected). **Does NOT** render video.
+  expected). **Does NOT** render video. (Within a single clip, `clip_processor.py`'s
+  optional `CLIP_PIPELINE_THREADED` can overlap decode + the GPU pass with the sequential
+  tracker/FSM pass — still one clip processed at a time.)
 - **Mid-match fit-generation reset:** `_handle` reads `db.get_fit_generation` and passes it
   as `want_generation` into `manager.get_or_create`. If that triggers a per-match session
   reset (`just_reset`), it calls `db.mark_minutes_superseded(match_id, last_half,
@@ -239,11 +242,27 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   frames:
   - **Pass 1 (batched, stateless GPU):** `player_det.detect_batch` + `team_clf.classify_batch`
     + (if `session.gk_det` is ready) `gk_det.classify(frame, dets)` per frame + `best_ball`
-    per frame.
+    per frame. Extracted as the `_pass1` closure.
   - **Pass 2 (strictly sequential, stateful):** `tracker.update` → `ball_tracker.update`
     → `carrier_eng.update` → `pass_track.update`; bucket the label into `MinuteCounters`
-    and apply adjustments. **Semantically identical** to the old per-frame loop — only the
-    GPU work is batched.
+    and apply adjustments. Extracted as the `_pass2` closure. **Semantically identical** to
+    the old per-frame loop — only the GPU work is batched.
+- **`CLIP_PIPELINE_THREADED` (default off) — opt-in producer/consumer split.** When unset,
+  decode + `_pass1` + `_pass2` all run on the calling thread in one serial loop; **no
+  thread is created** and behaviour is byte-for-byte identical to the pre-threading
+  version. When set, a single `daemon` producer thread runs the decode loop + `_pass1`
+  into a `queue.Queue(maxsize=2)` (both steps release the GIL) while the main thread
+  consumes windows and runs `_pass2` — a reordering of *when* work happens, not *what*, so
+  results are unchanged. A `None` sentinel stops the consumer; the `cv2.VideoCapture` is
+  owned end-to-end by the producer and released in its `finally`. On every consumer exit
+  (clean, Pass 2 exception, `KeyboardInterrupt`) the producer is signalled via a
+  `stop_event`, the queue is drained, and `join` is bounded to 30 s; a producer that
+  outlives that is logged as an error naming the `match_id` and — on the otherwise-clean
+  path — fails the clip with a `RuntimeError` rather than risk a leaked thread touching
+  this session's shared model objects on the match's next clip. Producer-thread exceptions
+  are captured and re-raised on the main thread after the join, so `worker.py`'s catch-all
+  sees them exactly as on the serial path. Acts as a kill switch — flip off to re-serialise
+  without a redeploy.
 - Splits boundary-spanning adjustments via `session.split_adjustment`: the prior-minute
   share becomes a `PriorCorrection` (one UPDATE to the previous row), the rest hits this
   minute's counters.
@@ -260,7 +279,9 @@ Between iterations the worker writes a heartbeat JSON (`_heartbeat`) that `api.p
   into `MinuteCounters.to_minute_row(...)` and stored on `MinuteRow.clip_duration_seconds`
   — used only for the CSV export (`scripts/get_csv.py`), not for any pipeline math.
 - **Does NOT** render, write SQL, or send callbacks — it returns plain data the worker
-  persists. Per-stage timing is logged at INFO (one line per processed clip).
+  persists. Per-stage timing is logged at INFO (one line per processed clip); with
+  `CLIP_PIPELINE_THREADED` on, the per-stage figures stay valid but the logged `total` is
+  the sum of both threads' stage time, not wall-clock (a code comment notes this).
 
 ## `post_processing/post_processing.py`
 - Thin whole-match wrapper around the existing pipeline. It reuses `process_clip(...)`

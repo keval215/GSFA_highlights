@@ -49,6 +49,7 @@ Set in `/etc/gsfa-highlights.env` (loaded via docker-compose `env_file`).
 | `TARGET_PROCESS_FPS` | no | `15` | Frames per second sampled from each clip |
 | `CMC_METHOD` | no | `ecc` | BoT-SORT camera-motion compensation: `ecc` / `sof` / `orb` / `sift` / `none` |
 | `CLIP_BATCH_WINDOW` | no | `16` | Frames per GPU batch in the two-pass processor |
+| `CLIP_PIPELINE_THREADED` | no | `false` | Worker-only knob. Off = the clip decode + GPU pass + sequential tracker/FSM pass run serially on one thread (unchanged behaviour). On = decode + GPU pass run on a producer thread feeding a bounded queue while the main thread runs the sequential pass; same results, no API/contract effect. Acts as a kill switch to re-serialise without a redeploy |
 | `FIT_SAMPLE_EVERY` | no | `30` | Torso-crop sampling stride for team fitting (every Nth raw frame). Raised from 5 to bound crop volume on whole-match `/post-processing` uploads |
 | `FIT_SILHOUETTE_MIN` | no | `0.20` | Minimum KMeans silhouette score on clip-1 crops before the fit is accepted; below this, clip 2's crops are combined in and refit (once) |
 | `MAX_UPLOAD_GB` | no | `2` | Max clip file size accepted by POST /api/clips |

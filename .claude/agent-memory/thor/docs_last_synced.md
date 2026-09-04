@@ -97,3 +97,31 @@ Triggered by ironman/captain (shared TASKS.md task 2), not a full `/update-doc` 
 service/sql changes above will appear as newly-committed — they are **already documented**,
 so verify the docs still match rather than re-documenting. Then re-verify the 2 Supermemory
 rows and advance this marker + their "Last-synced SHA" cells to the real commit.
+
+**Addendum (2026-09-03, thor Mode-3 scoped reconciliation — `CLIP_PIPELINE_THREADED`).**
+Triggered by ironman/captain, NOT a full `/update-doc` sweep — marker deliberately left at
+`5cf10e3`. Captain landed (uncommitted working tree) an opt-in threaded producer/consumer
+split in `service/clip_processor.py::process_clip()` behind a new `CLIP_PIPELINE_THREADED`
+bool in `service/config.py` (`# --- Tunables ---`, default False). Pass 1/Pass 2 extracted
+to `_pass1`/`_pass2` closures; default serial path byte-for-byte unchanged, no thread
+created. New `tests/test_clip_processor_threaded.py`. No API contract / SQL / threshold /
+`team_a`-`team_b` change.
+- Docs edited this pass: `docs/API.md` (one env-var row added to the inventory table —
+  captain expected no API change, but that table is a full `service/config.py` mirror so
+  omitting the knob would be drift; no contract/endpoint change), `docs/codebase/service/
+  README.md` (config tunables line, file-role table cell, new `clip_processor.py` bullet
+  on the threaded split, timing-log `total` caveat, worker "does NOT parallelise" note),
+  `docs/codebase/ARCHITECTURE.md` (worker flow step 5 + connection-map line).
+- `docs/azure_deploy.md` and `NEEDED_FROM_YOU.md` — **do not exist** (azure_deploy.md
+  deleted in `6c128c2`, NEEDED_FROM_YOU.md untracked since `2303936`); the only env-var
+  inventory in `docs/` is `docs/API.md`'s table, now updated.
+- Supermemory: **not touched** this pass (single opt-in toggle, minor; change still
+  uncommitted). Fold into the next full sweep.
+- CONTEXT.md refreshed (Mode 2): header working-tree note, §4 new uncommitted bullet, §5
+  decode-loop rewrite + tunables list.
+
+**A proper `/update-doc` (`5cf10e3..HEAD`) is still warranted** — to (a) verify the
+already-documented Approach A diff still matches now that it's committed as `6c128c2` and
+advance the 2 Supermemory rows' SHA cells, (b) reconcile `cf9d23e` (per-clip timing log
+DEBUG→INFO — service README already says "INFO", worth a spot-check), and (c) commit-anchor
+this threaded split once it lands and add its Supermemory row.

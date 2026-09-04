@@ -86,6 +86,14 @@ TARGET_PROCESS_FPS    = float(os.environ.get("TARGET_PROCESS_FPS", "15"))
 CMC_METHOD            = os.environ.get("CMC_METHOD", "ecc")
 # Frames per GPU batch in clip_processor's two-pass loop (Pass 1 inference).
 CLIP_BATCH_WINDOW     = int(os.environ.get("CLIP_BATCH_WINDOW", "16"))
+# Overlap clip decode + Pass 1 (GPU) on a producer thread with the sequential
+# Pass 2 (tracker/FSM) on the main thread, via a bounded queue. Off by default:
+# when False, clip_processor runs the unchanged serial path with no thread
+# created. Kill switch for the worker's first threaded code path — flip off to
+# re-serialise without a redeploy.
+CLIP_PIPELINE_THREADED = os.environ.get("CLIP_PIPELINE_THREADED", "false").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 # Ball is now produced by the unified detection model every processed frame
 # (no separate stride). BallTracker still coasts via Kalman on gaps.
 DEVICE                = os.environ.get("DEVICE", "cuda")          # detectors + classifier

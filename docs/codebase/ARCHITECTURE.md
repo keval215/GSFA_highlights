@@ -125,7 +125,10 @@ Polls the queue. Per clip (`Worker._handle`):
    both GK reference colours (cheap, retried every clip — no fit step needed).
 5. **Process** — `clip_processor.process_clip(...)` runs the shared CV pipeline over the
    clip at `TARGET_PROCESS_FPS`, continuing the session's tracker/ball/carrier/pass state,
-   including a per-frame `gk_det.classify(...)` call if the GK classifier is ready.
+   including a per-frame `gk_det.classify(...)` call if the GK classifier is ready. The
+   batched detect/classify pass and the sequential tracker/FSM pass run serially by
+   default; the opt-in `CLIP_PIPELINE_THREADED` env var (off by default) overlaps them on
+   a daemon producer thread + bounded queue with no change to results.
 6. **One SQL transaction** — `db.write_clip_result(...)` writes the minute row, any
    prior-minute correction, the events, the match progress, and the outbox row.
 7. **Callback** — `notifier.send_pending_for_match(...)` POSTs cumulative stats in order.
@@ -196,7 +199,8 @@ modules/possession/  (BallTracker, CarrierEngine, PassEventTracker,
 rulesets/ ─────────────────────> RulesetConfig selects the tuning every modules/* class
                                   above and service/session.py construct from
 service/session.py ───────────> wraps the pipeline classes into a MatchSession
-service/clip_processor.py ────> drives one clip through them (batched two-pass)
+service/clip_processor.py ────> drives one clip through them (batched two-pass;
+                                 opt-in CLIP_PIPELINE_THREADED producer/consumer split)
 service/stats.py ─────────────> mirrors POSSESS_*/EVT_* as dependency-free constants
                                  (session.py asserts the strings match at import)
 
